@@ -21,19 +21,19 @@ class AssetsExport implements FromCollection, WithHeadings, WithMapping, WithSty
 
     public function collection()
     {
-        $query = Asset::query();
+        $query = Asset::with(['assetType', 'assignedEmployee']);
 
         // Apply filters
-        if (!empty($this->filters['asset_type'])) {
-            $query->where('asset_type', $this->filters['asset_type']);
+        if (!empty($this->filters['asset_type_id'])) {
+            $query->where('asset_type_id', $this->filters['asset_type_id']);
         }
 
         if (!empty($this->filters['status'])) {
             $query->where('status', $this->filters['status']);
         }
 
-        if (!empty($this->filters['owner'])) {
-            $query->where('current_owner', 'like', '%' . $this->filters['owner'] . '%');
+        if (!empty($this->filters['assigned_to'])) {
+            $query->where('assigned_to', $this->filters['assigned_to']);
         }
 
         if (!empty($this->filters['start_date'])) {
@@ -53,11 +53,15 @@ class AssetsExport implements FromCollection, WithHeadings, WithMapping, WithSty
             'Asset Tag',
             'Serial Number',
             'Tipe Perangkat',
-            'Owner',
+            'Employee ID',
+            'Owner Name',
+            'Email',
+            'Department',
+            'Cost Center',
             'Status',
-            'Tanggal Status',
-            'Catatan',
-            'Dibuat Pada',
+            'Assignment Date',
+            'Last Status Date',
+            'Notes',
         ];
     }
 
@@ -66,12 +70,16 @@ class AssetsExport implements FromCollection, WithHeadings, WithMapping, WithSty
         return [
             $asset->asset_tag,
             $asset->serial_number ?? '-',
-            $asset->asset_type,
-            $asset->current_owner ?? '-',
+            $asset->assetType->name,
+            $asset->assignedEmployee->employee_id ?? '-',
+            $asset->assignedEmployee->name ?? '-',
+            $asset->assignedEmployee->email ?? '-',
+            $asset->assignedEmployee->department ?? '-',
+            $asset->assignedEmployee->cost_center ?? '-',
             $asset->status,
+            $asset->assignment_date ? $asset->assignment_date->format('d/m/Y') : '-',
             $asset->last_status_date->format('d/m/Y'),
             $asset->notes ?? '-',
-            $asset->created_at->format('d/m/Y H:i'),
         ];
     }
 
