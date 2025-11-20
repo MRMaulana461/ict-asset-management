@@ -100,8 +100,8 @@ class DashboardService
     }
 
     /**
-     * Get Most Borrowed Detail Data
-     */
+    * Get Most Borrowed Detail Data
+    */
     public function getMostBorrowedData($request)
     {
         // Base query for filtering
@@ -120,11 +120,13 @@ class DashboardService
             $baseQuery->whereDate('loan_date', '<=', $request->date_to);
         }
         
+        // UPDATED: Search by asset type name instead of asset_tag
         if ($request->filled('search')) {
             $search = $request->search;
             $baseQuery->where(function($q) use ($search) {
-                $q->whereHas('asset', function($assetQuery) use ($search) {
-                    $assetQuery->where('asset_tag', 'like', "%{$search}%");
+                $q->whereHas('asset.assetType', function($typeQuery) use ($search) {
+                    $typeQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('category', 'like', "%{$search}%");
                 })
                 ->orWhereHas('borrower', function($empQuery) use ($search) {
                     $empQuery->where('name', 'like', "%{$search}%")
@@ -146,10 +148,9 @@ class DashboardService
         // ===== PAGINATED LOANS (FILTERED) =====
         $loans = (clone $baseQuery)->latest('loan_date')->paginate(15);
         
-        // ===== TOP BORROWED ASSETS (FILTERED) =====
+        // ===== TOP BORROWED ASSET TYPES (FILTERED) =====
         $topBorrowedQuery = LoanLog::query()
-            ->join('assets', 'loan_log.asset_id', '=', 'assets.id')
-            ->join('asset_types', 'assets.asset_type_id', '=', 'asset_types.id')
+            ->join('asset_types', 'loan_log.asset_type_id', '=', 'asset_types.id')
             ->select('asset_types.id as asset_type_id', 'asset_types.name as asset_type_name', DB::raw('count(*) as count'));
         
         // Apply same filters to chart data
@@ -165,12 +166,12 @@ class DashboardService
             $topBorrowedQuery->whereDate('loan_log.loan_date', '<=', $request->date_to);
         }
         
-        // Apply search filter to chart query
+        // UPDATED: Apply search filter to chart query (search by asset type)
         if ($request->filled('search')) {
             $search = $request->search;
             $topBorrowedQuery->where(function($q) use ($search) {
-                $q->where('assets.asset_tag', 'like', "%{$search}%")
-                ->orWhere('asset_types.name', 'like', "%{$search}%")
+                $q->where('asset_types.name', 'like', "%{$search}%")
+                ->orWhere('asset_types.category', 'like', "%{$search}%")
                 ->orWhereExists(function($subQuery) use ($search) {
                     $subQuery->select(DB::raw(1))
                         ->from('employees')
@@ -194,6 +195,9 @@ class DashboardService
             'labels' => $topBorrowed->pluck('asset_type_name')->toArray() ?: [],
             'data' => $topBorrowed->pluck('count')->toArray() ?: []
         ];
+        
+        // DEBUG: Log chart data
+        \Log::info('Chart Data Created:', $chartData);
         
         // Get borrowers for filter dropdown
         $borrowers = Employee::orderBy('name')->get();
@@ -235,8 +239,11 @@ class DashboardService
             $baseQuery->where('asset_type_id', $request->asset_type_id);
         }
         
-        if ($request->filled('employee_id')) {
-            $baseQuery->where('employee_id', $request->employee_id);
+        // Filter by dept_id
+        if ($request->filled('dept_id')) {
+            $baseQuery->whereHas('employee', function($q) use ($request) {
+                $q->where('dept_id', $request->dept_id);
+            });
         }
         
         if ($request->filled('date_from')) {
@@ -252,7 +259,8 @@ class DashboardService
             $baseQuery->where(function($q) use ($search) {
                 $q->whereHas('employee', function($empQuery) use ($search) {
                     $empQuery->where('name', 'like', "%{$search}%")
-                             ->orWhere('employee_id', 'like', "%{$search}%");
+                            ->orWhere('ghrs_id', 'like', "%{$search}%")
+                            ->orWhere('dept_id', 'like', "%{$search}%");
                 })
                 ->orWhereHas('assetType', function($typeQuery) use ($search) {
                     $typeQuery->where('name', 'like', "%{$search}%");
@@ -269,64 +277,86 @@ class DashboardService
                 ->whereYear('date', now()->year)
                 ->count(),
             'total_quantity' => (clone $baseQuery)->sum('quantity'),
-            'unique_employees' => (clone $baseQuery)->distinct('employee_id')->count('employee_id')
+            'unique_dept_ids' => (clone $baseQuery)
+                ->join('employees', 'withdrawals.employee_id', '=', 'employees.id')
+                ->whereNotNull('employees.dept_id')
+                ->distinct('employees.dept_id')
+                ->count('employees.dept_id')
         ];
         
         // ===== PAGINATED WITHDRAWALS (FILTERED) =====
         $withdrawals = (clone $baseQuery)->latest('date')->paginate(15);
         
-        // ===== TOP REPORTERS CHART (FILTERED) =====
-        $topReportersQuery = Withdrawal::query()
-            ->select('employee_id', DB::raw('COUNT(*) as report_count'), DB::raw('SUM(quantity) as total_quantity'))
-            ->with('employee');
+        // ===== DAMAGE BY dept_id CHART (FILTERED) =====
+        $damageByDeptQuery = Withdrawal::query()
+            ->join('employees', 'withdrawals.employee_id', '=', 'employees.id')
+            ->select(
+                'employees.dept_id',
+                DB::raw('COUNT(*) as report_count'),
+                DB::raw('SUM(withdrawals.quantity) as total_quantity')
+            )
+            ->whereNotNull('employees.dept_id')
+            ->where('employees.dept_id', '!=', '');
         
         // Apply same filters
         if ($request->filled('asset_type_id')) {
-            $topReportersQuery->where('asset_type_id', $request->asset_type_id);
+            $damageByDeptQuery->where('withdrawals.asset_type_id', $request->asset_type_id);
         }
         
-        if ($request->filled('employee_id')) {
-            $topReportersQuery->where('employee_id', $request->employee_id);
+        if ($request->filled('dept_id')) {
+            $damageByDeptQuery->where('employees.dept_id', $request->dept_id);
         }
         
         if ($request->filled('date_from')) {
-            $topReportersQuery->whereDate('date', '>=', $request->date_from);
+            $damageByDeptQuery->whereDate('withdrawals.date', '>=', $request->date_from);
         }
         
         if ($request->filled('date_to')) {
-            $topReportersQuery->whereDate('date', '<=', $request->date_to);
+            $damageByDeptQuery->whereDate('withdrawals.date', '<=', $request->date_to);
         }
         
         if ($request->filled('search')) {
             $search = $request->search;
-            $topReportersQuery->where(function($q) use ($search) {
-                $q->whereHas('employee', function($empQuery) use ($search) {
-                    $empQuery->where('name', 'like', "%{$search}%")
-                             ->orWhere('employee_id', 'like', "%{$search}%");
+            $damageByDeptQuery->where(function($q) use ($search) {
+                $q->where('employees.name', 'like', "%{$search}%")
+                ->orWhere('employees.ghrs_id', 'like', "%{$search}%")
+                ->orWhere('employees.dept_id', 'like', "%{$search}%")
+                ->orWhereExists(function($subQuery) use ($search) {
+                    $subQuery->select(DB::raw(1))
+                        ->from('asset_types')
+                        ->whereColumn('asset_types.id', 'withdrawals.asset_type_id')
+                        ->where('asset_types.name', 'like', "%{$search}%");
                 })
-                ->orWhereHas('assetType', function($typeQuery) use ($search) {
-                    $typeQuery->where('name', 'like', "%{$search}%");
-                })
-                ->orWhere('reason', 'like', "%{$search}%");
+                ->orWhere('withdrawals.reason', 'like', "%{$search}%");
             });
         }
         
-        $topReporters = $topReportersQuery
-            ->groupBy('employee_id')
+        $damageByDept = $damageByDeptQuery
+            ->groupBy('employees.dept_id')
             ->orderByDesc('report_count')
             ->take(10)
             ->get();
-        
+
         // ===== MONTHLY TREND (FILTERED) =====
         $monthlyTrendQuery = Withdrawal::query();
         
-        // Apply same filters
+        // Apply same filters to monthly trend query
         if ($request->filled('asset_type_id')) {
             $monthlyTrendQuery->where('asset_type_id', $request->asset_type_id);
         }
         
-        if ($request->filled('employee_id')) {
-            $monthlyTrendQuery->where('employee_id', $request->employee_id);
+        if ($request->filled('dept_id')) {
+            $monthlyTrendQuery->whereHas('employee', function($q) use ($request) {
+                $q->where('dept_id', $request->dept_id);
+            });
+        }
+        
+        if ($request->filled('date_from')) {
+            $monthlyTrendQuery->whereDate('date', '>=', $request->date_from);
+        }
+        
+        if ($request->filled('date_to')) {
+            $monthlyTrendQuery->whereDate('date', '<=', $request->date_to);
         }
         
         if ($request->filled('search')) {
@@ -334,7 +364,8 @@ class DashboardService
             $monthlyTrendQuery->where(function($q) use ($search) {
                 $q->whereHas('employee', function($empQuery) use ($search) {
                     $empQuery->where('name', 'like', "%{$search}%")
-                             ->orWhere('employee_id', 'like', "%{$search}%");
+                            ->orWhere('ghrs_id', 'like', "%{$search}%")
+                            ->orWhere('dept_id', 'like', "%{$search}%");
                 })
                 ->orWhereHas('assetType', function($typeQuery) use ($search) {
                     $typeQuery->where('name', 'like', "%{$search}%");
@@ -342,7 +373,7 @@ class DashboardService
                 ->orWhere('reason', 'like', "%{$search}%");
             });
         }
-        
+
         $monthlyTrend = [];
         for ($i = 5; $i >= 0; $i--) {
             $month = Carbon::now()->subMonths($i);
@@ -358,11 +389,10 @@ class DashboardService
             ];
         }
         
-        // Chart Data
         $chartData = [
-            'reporters' => [
-                'labels' => $topReporters->map(fn($w) => $w->employee->name ?? 'Unknown')->toArray() ?: [],
-                'data' => $topReporters->pluck('report_count')->toArray() ?: []
+            'dept_id' => [
+                'labels' => $damageByDept->pluck('dept_id')->toArray() ?: [],
+                'data' => $damageByDept->pluck('report_count')->toArray() ?: []
             ],
             'trend' => [
                 'labels' => array_column($monthlyTrend, 'month'),
@@ -372,7 +402,13 @@ class DashboardService
         
         // Dropdown data
         $assetTypes = AssetType::orderBy('name')->get();
-        $employees = Employee::orderBy('name')->get();
+        
+        // Get unique dept_ids for filter
+        $dept_ids = Employee::whereNotNull('dept_id')
+            ->where('dept_id', '!=', '')
+            ->distinct()
+            ->orderBy('dept_id')
+            ->pluck('dept_id');
         
         // Active filters
         $activeFilters = [];
@@ -382,11 +418,8 @@ class DashboardService
                 $activeFilters['asset_type'] = $selectedType->name;
             }
         }
-        if ($request->filled('employee_id')) {
-            $selectedEmployee = Employee::find($request->employee_id);
-            if ($selectedEmployee) {
-                $activeFilters['employee'] = $selectedEmployee->name;
-            }
+        if ($request->filled('dept_id')) {
+            $activeFilters['dept_id'] = $request->dept_id;
         }
         if ($request->filled('date_from')) {
             $activeFilters['date_from'] = Carbon::parse($request->date_from)->format('d M Y');
@@ -403,7 +436,7 @@ class DashboardService
             'stats',
             'chartData',
             'assetTypes',
-            'employees',
+            'dept_ids', // Perbaiki nama variabel - dengan 's'
             'activeFilters'
         );
     }
@@ -413,7 +446,7 @@ class DashboardService
      */
     public function getRecentActivitiesData($request)
     {
-        $perPage = 20; // 4 rows × 5 items
+        $perPage = 40; // 4 rows × 5 items
         $itemsPerRow = 5;
         
         // Build activities query with filters
@@ -503,17 +536,22 @@ class DashboardService
             if ($dateTo) $loansQuery->whereDate('loan_date', '<=', $dateTo);
             
             $loans = $loansQuery->limit(200)->get()->map(function($loan) {
+      
+                $assetTypeName = $loan->asset && $loan->asset->assetType 
+                    ? $loan->asset->assetType->name 
+                    : ($loan->asset_type_name ?? 'Unknown Asset Type');
+                
                 return [
                     'id' => 'loan-' . $loan->id,
                     'type' => 'loan',
                     'icon' => 'arrow-right',
                     'color' => 'orange',
                     'title' => 'Asset Borrowed',
-                    'description' => ($loan->borrower->name ?? 'Unknown') . ' borrowed ' . ($loan->asset->assetType->name ?? 'asset'),
-                    'details' => 'Asset: ' . ($loan->asset->asset_tag ?? 'N/A') . ' | Duration: ' . $loan->duration_days . ' days',
+                    'description' => ($loan->borrower->name ?? 'Unknown') . ' borrowed ' . $assetTypeName,
+                    'details' => 'Asset Type: ' . $assetTypeName . ' | Duration: ' . $loan->duration_days . ' days',
                     'timestamp' => $loan->created_at,
                     'date' => $loan->created_at->format('d M Y H:i'),
-                    'search_text' => strtolower($loan->borrower->name . ' ' . $loan->asset->asset_tag . ' ' . $loan->asset->assetType->name. ' ' . $loan->borrower->employee_id)
+                    'search_text' => strtolower(($loan->borrower->name ?? '') . ' ' . $assetTypeName . ' ' . ($loan->borrower->employee_id ?? ''))
                 ];
             });
             $activities = $activities->merge($loans);
@@ -530,17 +568,22 @@ class DashboardService
             if ($dateTo) $returnsQuery->whereDate('return_date', '<=', $dateTo);
             
             $returns = $returnsQuery->limit(200)->get()->map(function($loan) {
+                
+                $assetTypeName = $loan->asset && $loan->asset->assetType 
+                    ? $loan->asset->assetType->name 
+                    : ($loan->asset_type_name ?? 'Unknown Asset Type');
+                
                 return [
                     'id' => 'return-' . $loan->id,
                     'type' => 'return',
                     'icon' => 'arrow-left',
                     'color' => 'green',
                     'title' => 'Asset Returned',
-                    'description' => ($loan->borrower->name ?? 'Unknown') . ' returned ' . ($loan->asset->assetType->name ?? 'asset'),
-                    'details' => 'Asset: ' . ($loan->asset->asset_tag ?? 'N/A'),
+                    'description' => ($loan->borrower->name ?? 'Unknown') . ' returned ' . $assetTypeName,
+                    'details' => 'Asset Type: ' . $assetTypeName,
                     'timestamp' => Carbon::parse($loan->return_date),
                     'date' => Carbon::parse($loan->return_date)->format('d M Y H:i'),
-                    'search_text' => strtolower($loan->borrower->name . ' ' . $loan->asset->asset_tag . ' ' . $loan->asset->assetType->name)
+                    'search_text' => strtolower(($loan->borrower->name ?? '') . ' ' . $assetTypeName)
                 ];
             });
             $activities = $activities->merge($returns);
@@ -556,17 +599,20 @@ class DashboardService
             if ($dateTo) $brokenQuery->whereDate('updated_at', '<=', $dateTo);
             
             $broken = $brokenQuery->limit(200)->get()->map(function($asset) {
+               
+                $assetTypeName = $asset->assetType ? $asset->assetType->name : 'Unknown Asset Type';
+                
                 return [
                     'id' => 'broken-' . $asset->id,
                     'type' => 'broken',
                     'icon' => 'alert-circle',
                     'color' => 'red',
                     'title' => 'Asset Broken',
-                    'description' => ($asset->assetType->name ?? 'Asset') . ' reported as broken',
-                    'details' => 'Asset: ' . $asset->asset_tag . ($asset->assignedEmployee ? ' | Last user: ' . $asset->assignedEmployee->name : ''),
+                    'description' => $assetTypeName . ' reported as broken',
+                    'details' => 'Asset Type: ' . $assetTypeName . ($asset->assignedEmployee ? ' | Last user: ' . $asset->assignedEmployee->name : ''),
                     'timestamp' => $asset->updated_at,
                     'date' => $asset->updated_at->format('d M Y H:i'),
-                    'search_text' => strtolower($asset->asset_tag . ' ' . ($asset->assetType->name ?? '') . ' ' . ($asset->assignedEmployee->name ?? ''))
+                    'search_text' => strtolower($assetTypeName . ' ' . ($asset->assignedEmployee->name ?? ''))
                 ];
             });
             $activities = $activities->merge($broken);
@@ -575,23 +621,26 @@ class DashboardService
         // === WITHDRAWALS ===
         if (in_array($type, ['all', 'withdrawal'])) {
             $withdrawalsQuery = Withdrawal::with(['employee', 'assetType'])
-                ->latest('date');  // ✅ PAKAI DATE BUKAN CREATED_AT
+                ->latest('date');
             
             if ($dateFrom) $withdrawalsQuery->whereDate('date', '>=', $dateFrom);
             if ($dateTo) $withdrawalsQuery->whereDate('date', '<=', $dateTo);
             
             $withdrawals = $withdrawalsQuery->limit(200)->get()->map(function($withdrawal) {
+                
+                $assetTypeName = $withdrawal->assetType ? $withdrawal->assetType->name : 'Unknown Asset Type';
+                
                 return [
                     'id' => 'withdrawal-' . $withdrawal->id,
                     'type' => 'withdrawal',
                     'icon' => 'alert-triangle',
                     'color' => 'purple',
                     'title' => 'Damage Reported',
-                    'description' => ($withdrawal->employee->name ?? 'Unknown') . ' reported damage - ' . ($withdrawal->assetType->name ?? 'asset'),
-                    'details' => 'Quantity: ' . $withdrawal->quantity . ' | Reason: ' . \Str::limit($withdrawal->reason, 50),
-                    'timestamp' => $withdrawal->date,  // ✅ PAKAI DATE BUKAN CREATED_AT
-                    'date' => Carbon::parse($withdrawal->date)->format('d M Y H:i'),  // ✅ PAKAI DATE BUKAN CREATED_AT
-                    'search_text' => strtolower($withdrawal->employee->name . ' ' . $withdrawal->assetType->name . ' ' . $withdrawal->reason)
+                    'description' => ($withdrawal->employee->name ?? 'Unknown') . ' reported damage - ' . $assetTypeName,
+                    'details' => 'Asset Type: ' . $assetTypeName . ' | Quantity: ' . $withdrawal->quantity . ' | Reason: ' . \Str::limit($withdrawal->reason, 50),
+                    'timestamp' => $withdrawal->date,
+                    'date' => Carbon::parse($withdrawal->date)->format('d M Y H:i'),
+                    'search_text' => strtolower(($withdrawal->employee->name ?? '') . ' ' . $assetTypeName . ' ' . $withdrawal->reason)
                 ];
             });
             $activities = $activities->merge($withdrawals);

@@ -7,7 +7,6 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
-use PhpOffice\PhpSpreadsheet\Style\Border;
 
 class AssetImportController extends Controller
 {
@@ -29,14 +28,14 @@ class AssetImportController extends Controller
             $created = $import->getCreatedCount();
             $updated = $import->getUpdatedCount();
             $skipped = $import->getSkippedCount();
-            $employeesCreated = $import->getEmployeesCreatedCount();
+            $assetTypesCreated = $import->getAssetTypesCreatedCount();
 
-            $message = "Import completed! ";
+            $message = "✅ Import completed! ";
             $details = [];
             
             if ($created > 0) $details[] = "{$created} assets created";
             if ($updated > 0) $details[] = "{$updated} assets updated";
-            if ($employeesCreated > 0) $details[] = "{$employeesCreated} employees auto-created";
+            if ($assetTypesCreated > 0) $details[] = "{$assetTypesCreated} asset types auto-created";
             if ($skipped > 0) $details[] = "{$skipped} rows skipped";
             
             $message .= implode(', ', $details);
@@ -44,12 +43,13 @@ class AssetImportController extends Controller
             return redirect()->route('assets.index')
                 ->with('success', $message);
         } catch (\Exception $e) {
+            \Log::error('Import failed', ['error' => $e->getMessage()]);
             return back()->with('error', 'Import error: ' . $e->getMessage());
         }
     }
 
     /**
-     * Generate and download Excel import template with all required columns
+     * Generate Excel template - MATCH EXACT HEADERS
      */
     public function downloadTemplate()
     {
@@ -57,24 +57,29 @@ class AssetImportController extends Controller
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Assets Import');
 
-        // HEADER - Row 1
+        // HEADER - EXACT MATCH dengan Excel Anda
         $headers = [
-            'A1' => 'asset_tag',           // REQUIRED
-            'B1' => 'serial_number',       // Optional
-            'C1' => 'asset_type',          // REQUIRED (type name, e.g.: "Laptop")
-            'D1' => 'employee_id',         // Optional (ID of assigned employee)
-            'E1' => 'employee_name',       // Optional (auto-created if not found)
-            'F1' => 'employee_email',      // Optional
-            'G1' => 'sam_account_name',    // Optional
-            'H1' => 'department',          // Optional
-            'I1' => 'cost_center',         // Optional
-            'J1' => 'status',              // Optional (In Stock/In Use/Broken/Retired/Taken)
-            'K1' => 'assignment_date',     // Optional (format: YYYY-MM-DD)
-            'L1' => 'last_status_date',    // Optional (format: YYYY-MM-DD)
-            'M1' => 'notes',               // Optional
+            'A1' => 'pr_ref',
+            'B1' => 'po_ref',
+            'C1' => 'item',
+            'D1' => 'brand',
+            'E1' => 'type',
+            'F1' => 'serial_number',
+            'G1' => 'ghrs_id',
+            'H1' => 'badge_id',
+            'I1' => 'assignment_date',
+            'J1' => 'location',
+            'K1' => 'remarks',
+            'L1' => 'dept/project',
+            'M1' => 'delivery_date',
+            'N1' => 'status',
+            'O1' => 'service_tag',
+            'P1' => 'username',
+            'Q1' => 'device_name',
+            'R1' => 'serial_clean',
         ];
 
-        // Apply headers and styling
+        // Apply headers with styling
         foreach ($headers as $cell => $value) {
             $sheet->setCellValue($cell, $value);
             
@@ -97,8 +102,46 @@ class AssetImportController extends Controller
 
         // SAMPLE DATA - Row 2 & 3
         $exampleData = [
-            ['LAP001', 'SN123456', 'Laptop', 'EMP001', 'John Doe', 'john.doe@company.com', 'johndoe', 'IT', 'CC001', 'In Use', '2025-01-15', '2025-01-15', 'Dell Latitude 5420'],
-            ['MOU001', 'SN789012', 'Mouse', 'EMP002', 'Jane Smith', 'jane.smith@company.com', 'janesmith', 'Finance', 'CC002', 'In Stock', '', '2025-01-10', 'Logitech MX Master'],
+            [
+                'PR001',           // pr_ref
+                'PO001',           // po_ref
+                'Dell Latitude 5420', // item
+                'Dell',            // brand
+                'Laptop',          // type
+                'SN123456',        // serial_number
+                '118154',          // ghrs_id
+                '',                // badge_id
+                '2025-01-15',      // assignment_date
+                'Main Office 2F',  // location
+                'Good condition',  // remarks
+                'IT Department',   // dept/project
+                '2025-01-10',      // delivery_date
+                'In Use',          // status
+                '',                // service_tag
+                'John Doe',        // username
+                'LAPTOP-001',      // device_name
+                'SN123456'         // serial_clean
+            ],
+            [
+                'PR002',           // pr_ref
+                'PO002',           // po_ref
+                'Logitech MX Master 3', // item
+                'Logitech',        // brand
+                'Mouse',           // type
+                'SN789012',        // serial_number
+                '',                // ghrs_id
+                '',                // badge_id
+                '',                // assignment_date
+                'Warehouse',       // location
+                'New stock',       // remarks
+                '',                // dept/project
+                '2025-01-20',      // delivery_date
+                'In Stock',        // status
+                '',                // service_tag
+                '',                // username
+                '',                // device_name
+                'SN789012'         // serial_clean
+            ],
         ];
 
         $row = 2;
@@ -116,32 +159,60 @@ class AssetImportController extends Controller
         $instructionSheet->setTitle('Instructions');
         
         $instructions = [
-            ['ASSET IMPORT TEMPLATE - INSTRUCTIONS'],
+            ['🤖 SMART ASSET IMPORT - INSTRUCTIONS'],
             [''],
-            ['REQUIRED:'],
-            ['1. asset_tag', '=> Unique identifier for the asset (e.g.: LAP001, MOU001)'],
-            ['2. asset_type', '=> Asset type name already existing in the database (e.g.: Laptop, Mouse, Monitor)'],
+            ['EXACT COLUMN HEADERS (DO NOT CHANGE):'],
+            ['pr_ref | po_ref | item | brand | type | serial_number | ghrs_id | badge_id'],
+            ['assignment_date | location | remarks | dept/project | delivery_date | status'],
+            ['service_tag | username | device_name | serial_clean'],
             [''],
-            ['OPTIONAL:'],
-            ['3. serial_number', '=> Serial number (if available)'],
-            ['4. employee_id', '=> ID of the employee assigned to this asset'],
-            ['5. employee_name', '=> Employee name (auto-created if ID not found)'],
-            ['6. employee_email', '=> Employee email address'],
-            ['7. sam_account_name', '=> SAM Account Name (for Active Directory integration)'],
-            ['8. department', '=> Employee’s department'],
-            ['9. cost_center', '=> Employee’s cost center'],
-            ['10. status', '=> Asset status: In Stock, In Use, Broken, Retired, Taken (default: In Stock)'],
-            ['11. assignment_date', '=> Date asset was assigned (format: YYYY-MM-DD or DD/MM/YYYY)'],
-            ['12. last_status_date', '=> Last status update date (format: YYYY-MM-DD)'],
-            ['13. notes', '=> Any additional notes or comments'],
+            ['COLUMN DETAILS:'],
+            ['• pr_ref: Purchase Request number'],
+            ['• po_ref: Purchase Order number'],
+            ['• item: Product name (e.g., "Dell Latitude 5420")'],
+            ['• brand: Manufacturer (e.g., "Dell", "HP", "Logitech")'],
+            ['• type: Item type (e.g., "Laptop", "Monitor", "Mouse")'],
+            ['• serial_number: Asset serial number'],
+            ['• ghrs_id: Employee GHRS ID (for assignment)'],
+            ['• badge_id: Employee Badge ID (for assignment)'],
+            ['• assignment_date: Format YYYY-MM-DD or DD/MM/YYYY'],
+            ['• location: Physical location'],
+            ['• remarks: Additional notes'],
+            ['• dept/project: Department or Project name'],
+            ['• delivery_date: Format YYYY-MM-DD or DD/MM/YYYY'],
+            ['• status: In Stock / In Use / Broken / Retired / Taken'],
+            ['• service_tag: Service tag (optional)'],
+            ['• username: Employee name (for assignment)'],
+            ['• device_name: Computer/device hostname'],
+            ['• serial_clean: Cleaned serial (auto-generated if empty)'],
             [''],
-            ['IMPORTANT NOTES:'],
-            ['• asset_tag MUST be unique'],
-            ['• If asset_tag already exists, the record will be UPDATED'],
-            ['• If employee_id does not exist and employee_name is provided, a new employee record will be auto-created'],
-            ['• Valid status values: In Stock, In Use, Broken, Retired, Taken'],
-            ['• Empty columns will be ignored (defaults will be used)'],
-            ['• Invalid rows will be skipped automatically'],
+            ['🎯 SMART FEATURES:'],
+            ['✓ Auto-detect asset type from "item" and "type" columns'],
+            ['✓ Auto-create asset types if not in database'],
+            ['✓ Auto-generate asset_tag (LAP-0001, MON-0002, etc.)'],
+            ['✓ Auto-assign to employee if ghrs_id/badge_id/username found'],
+            ['✓ Auto-set status based on assignment'],
+            ['✓ Skip duplicate asset tags'],
+            ['✓ Skip empty rows automatically'],
+            [''],
+            ['💡 EMPLOYEE ASSIGNMENT:'],
+            ['Priority: ghrs_id > badge_id > username'],
+            ['If employee found → Status auto-set to "In Use"'],
+            ['If employee NOT found → Status defaults to "In Stock"'],
+            [''],
+            ['📋 EXAMPLES:'],
+            ['✅ GOOD: All main fields filled'],
+            ['   item: "HP EliteBook 840 G8"'],
+            ['   brand: "HP"'],
+            ['   type: "Laptop"'],
+            ['   ghrs_id: 118154'],
+            [''],
+            ['✅ GOOD: Minimal (item only)'],
+            ['   item: "Dell Monitor 24 inch"'],
+            ['   → Will auto-detect type "Monitor"'],
+            [''],
+            ['❌ BAD: Empty item'],
+            ['   (Will be skipped)'],
         ];
 
         $row = 1;
@@ -152,8 +223,8 @@ class AssetImportController extends Controller
                 $col++;
             }
             
-            // Highlight section headers
-            if ($row == 1 || in_array($row, [3, 7, 19])) {
+            // Highlight headers
+            if ($row == 1 || in_array($row, [3, 8, 28, 33, 38])) {
                 $instructionSheet->getStyle('A' . $row)->getFont()->setBold(true);
                 $instructionSheet->getStyle('A' . $row)->getFont()->setSize(12);
             }
@@ -163,7 +234,7 @@ class AssetImportController extends Controller
 
         // Auto-size columns
         $spreadsheet->setActiveSheetIndex(0);
-        foreach (range('A', 'M') as $col) {
+        foreach (range('A', 'R') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
@@ -171,8 +242,8 @@ class AssetImportController extends Controller
             $instructionSheet->getColumnDimension($col)->setAutoSize(true);
         }
 
-        // Output download
-        $fileName = 'asset_import_template_' . date('Y-m-d') . '.xlsx';
+        // Download
+        $fileName = 'asset_import_template_' . date('Ymd') . '.xlsx';
         $writer = new Xlsx($spreadsheet);
         
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

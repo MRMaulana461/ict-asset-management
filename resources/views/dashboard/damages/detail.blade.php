@@ -73,14 +73,14 @@
                     </select>
                 </div>
 
-                <!-- Employee -->
+                <!-- Department -->
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Employee</label>
-                    <select name="employee_id" class="w-full border-gray-300 rounded-lg focus:ring-2 focus:ring-saipem-primary focus:border-saipem-primary transition-all py-2.5">
-                        <option value="">All Employees</option>
-                        @foreach($employees as $employee)
-                            <option value="{{ $employee->id }}" {{ request('employee_id') == $employee->id ? 'selected' : '' }}>
-                                {{ $employee->name }}
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Department</label>
+                    <select name="dept_id" class="w-full border-gray-300 rounded-lg focus:ring-2 focus:ring-saipem-primary focus:border-saipem-primary transition-all py-2.5">
+                        <option value="">All Departments</option>
+                        @foreach($dept_ids as $dept)
+                            <option value="{{ $dept }}" {{ request('dept_id') == $dept ? 'selected' : '' }}>
+                                {{ $dept }}
                             </option>
                         @endforeach
                     </select>
@@ -104,7 +104,7 @@
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Search</label>
                     <input type="text" name="search" value="{{ request('search') }}" 
-                           placeholder="Employee, reason..."
+                           placeholder="Employee, department, reason..."
                            class="w-full border-gray-300 rounded-lg focus:ring-2 focus:ring-saipem-primary focus:border-saipem-primary transition-all py-2.5">
                 </div>
 
@@ -118,7 +118,7 @@
                 </div>
 
                 <!-- Clear Filters -->
-                @if(request()->hasAny(['asset_type_id', 'employee_id', 'date_from', 'date_to', 'search']))
+                @if(request()->hasAny(['asset_type_id', 'dept_id', 'date_from', 'date_to', 'search']))
                 <div class="pt-4 border-t border-gray-200">
                     <a href="{{ route('dashboard.damages.detail') }}" 
                        class="text-sm text-saipem-primary hover:text-saipem-accent flex items-center justify-center">
@@ -151,7 +151,7 @@
                         <p class="text-xl sm:text-2xl font-bold text-gray-800 mt-1 group-hover:text-purple-600 transition-colors">{{ $stats['total_withdrawals'] }}</p>
                         <p class="text-sm text-purple-600 mt-2 flex items-center">
                             <i data-lucide="file-text" class="w-4 h-4 mr-1"></i>
-                            {{ request()->hasAny(['asset_type_id', 'employee_id', 'date_from', 'date_to', 'search']) ? 'Filtered' : 'All time' }}
+                            {{ request()->hasAny(['asset_type_id', 'dept_id', 'date_from', 'date_to', 'search']) ? 'Filtered' : 'All time' }}
                         </p>
                     </div>
                     <div class="bg-purple-100 p-2 sm:p-3 rounded-full group-hover:scale-110 transition-transform">
@@ -195,145 +195,81 @@
             <div class="bg-white p-4 sm:p-5 rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 group">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-gray-500 text-xs sm:text-sm font-medium">Reporters</p>
-                        <p class="text-xl sm:text-2xl font-bold text-blue-600 mt-1 group-hover:scale-110 transition-transform">{{ $stats['unique_employees'] }}</p>
+                        <p class="text-gray-500 text-xs sm:text-sm font-medium">Departments</p>
+                        <p class="text-xl sm:text-2xl font-bold text-blue-600 mt-1 group-hover:scale-110 transition-transform">{{ $stats['unique_dept_ids'] }}</p>
                         <p class="text-sm text-blue-600 mt-2 flex items-center">
-                            <i data-lucide="users" class="w-4 h-4 mr-1"></i>
-                            Unique employees
+                            <i data-lucide="building" class="w-4 h-4 mr-1"></i>
+                            Affected departments
                         </p>
                     </div>
                     <div class="bg-blue-100 p-2 sm:p-3 rounded-full group-hover:scale-110 transition-transform">
-                        <i data-lucide="users" class="w-4 h-4 sm:w-6 sm:h-6 text-blue-600"></i>
+                        <i data-lucide="building" class="w-4 h-4 sm:w-6 sm:h-6 text-blue-600"></i>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- Charts Section -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <!-- Top Damagers Chart -->
-            <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-lg font-semibold text-gray-800 flex items-center">
-                        <i data-lucide="user-x" class="w-5 h-5 mr-2 text-saipem-primary"></i>
-                        Top Damagers
-                    </h2>
-                    <span class="text-sm text-gray-500 bg-gray-50 px-3 py-1 rounded-full">
-                        Top 10
-                    </span>
-                </div>
-                @if(!empty($chartData['reporters']['labels']) && count($chartData['reporters']['labels']) > 0)
-                <div class="relative h-64">
-                    <canvas id="reportersChart"></canvas>
-                </div>
-                @else
-                <div class="relative h-64 flex items-center justify-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                    <div class="text-center">
-                        <i data-lucide="user-x" class="w-12 h-12 text-gray-300 mx-auto mb-3"></i>
-                        <p class="text-gray-500 text-sm">No reporter data available</p>
-                        @if(request()->hasAny(['asset_type_id', 'employee_id', 'date_from', 'date_to', 'search']))
-                        <a href="{{ route('dashboard.damages.detail') }}" class="text-saipem-primary hover:text-saipem-accent text-xs mt-2 inline-block">
-                            Clear filters
-                        </a>
-                        @endif
-                    </div>
-                </div>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Damage by Department Chart -->
+    <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg border border-gray-100">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-gray-800 flex items-center">
+                <i data-lucide="building" class="w-5 h-5 mr-2 text-saipem-primary"></i>
+                Damage by Departments
+            </h2>
+        </div>
+        
+        {{-- Debug: Tampilkan data chart --}}
+        @php
+            $hasDeptData = !empty($chartData['dept_id']['labels']) && count($chartData['dept_id']['labels']) > 0;
+        @endphp
+        
+        @if($hasDeptData)
+        <div class="relative h-64">
+            <canvas id="dept_idChart"></canvas>
+        </div>
+        @else
+        <div class="relative h-64 flex items-center justify-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+            <div class="text-center">
+                <i data-lucide="building" class="w-12 h-12 text-gray-300 mx-auto mb-3"></i>
+                <p class="text-gray-500 text-sm">No department data available</p>
+                <p class="text-gray-400 text-xs mt-1">
+                    @if(empty($chartData['dept_id']['labels']))
+                    No department labels data
+                    @elseif(empty($chartData['dept_id']['data'])) 
+                    No department chart data
+                    @endif
+                </p>
+                @if(request()->hasAny(['asset_type_id', 'dept_id', 'date_from', 'date_to', 'search']))
+                <a href="{{ route('dashboard.damages.detail') }}" class="text-saipem-primary hover:text-saipem-accent text-xs mt-2 inline-block">
+                    Clear filters
+                </a>
                 @endif
             </div>
-
-            <!-- Monthly Trend Chart -->
-            <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-lg font-semibold text-gray-800 flex items-center">
-                        <i data-lucide="trending-up" class="w-5 h-5 mr-2 text-saipem-primary"></i>
-                        Monthly Trend
-                    </h2>
-                    <span class="text-sm text-gray-500 bg-gray-50 px-3 py-1 rounded-full">
-                        Last 6 Months
-                    </span>
-                </div>
-                <div class="relative h-64">
-                    <canvas id="trendChart"></canvas>
-                </div>
-            </div>
         </div>
+        @endif
+    </div>
 
-        <!-- Withdrawals Table -->
-        <div class="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
-            <div class="p-4 sm:p-6 border-b border-gray-200">
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <h2 class="text-lg sm:text-xl font-semibold text-gray-800 flex items-center">
-                        <i data-lucide="table" class="w-5 h-5 mr-2 text-saipem-primary"></i>
-                        Withdrawal Records
-                    </h2>
-                    <span class="text-sm text-gray-600 bg-gray-50 px-3 py-1 rounded-full">{{ $withdrawals->total() }} records found</span>
-                </div>
-            </div>
-
-            <div class="overflow-x-auto">
-                <table class="w-full min-w-full">
-                    <thead class="bg-gray-50 border-b border-gray-200">
-                        <tr>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Department</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Asset Type</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">Reason</th>
-                        </tr>
-                    </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
-                        @forelse($withdrawals as $withdrawal)
-                        <tr class="hover:bg-gray-50 transition-colors">
-                            <td class="px-4 py-4 whitespace-nowrap">
-                                <span class="text-sm text-gray-900">{{ \Carbon\Carbon::parse($withdrawal->date)->format('d M Y') }}</span>
-                            </td>
-                            <td class="px-4 py-4">
-                                <div class="text-sm font-medium text-gray-900">{{ $withdrawal->employee->name ?? 'N/A' }}</div>
-                                <div class="text-xs text-gray-500">{{ $withdrawal->employee->employee_id ?? 'N/A' }}</div>
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap hidden sm:table-cell">
-                                <span class="text-sm text-gray-600">{{ $withdrawal->employee->department ?? 'N/A' }}</span>
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap">
-                                <span class="text-sm font-medium text-gray-900">{{ $withdrawal->assetType->name ?? 'N/A' }}</span>
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap">
-                                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                                    {{ $withdrawal->quantity }}
-                                </span>
-                            </td>
-                            <td class="px-4 py-4 hidden lg:table-cell">
-                                <span class="text-sm text-gray-700 line-clamp-2">{{ $withdrawal->reason }}</span>
-                            </td>
-                        </tr>
-                        @empty
-                        <tr>
-                            <td colspan="6" class="px-6 py-12 text-center">
-                                <i data-lucide="inbox" class="w-12 h-12 text-gray-300 mx-auto mb-3"></i>
-                                <p class="text-gray-500 text-lg">No damage records found</p>
-                                @if(request()->hasAny(['asset_type_id', 'employee_id', 'date_from', 'date_to', 'search']))
-                                <a href="{{ route('dashboard.damages.detail') }}" class="text-saipem-primary hover:text-saipem-accent text-sm mt-2 inline-block">
-                                    Clear filters to see all records
-                                </a>
-                                @endif
-                            </td>
-                        </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Pagination -->
-            @if($withdrawals->hasPages())
-            <div class="px-4 sm:px-6 py-4 border-t border-gray-200">
-                {{ $withdrawals->onEachSide(1)->links() }}
-            </div>
-            @endif
+    <!-- Monthly Trend Chart -->
+    <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg border border-gray-100">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-gray-800 flex items-center">
+                <i data-lucide="trending-up" class="w-5 h-5 mr-2 text-saipem-primary"></i>
+                Monthly Trend
+            </h2>
+            <span class="text-sm text-gray-500 bg-gray-50 px-3 py-1 rounded-full">
+                Last 6 Months
+            </span>
+        </div>
+        <div class="relative h-64">
+            <canvas id="trendChart"></canvas>
         </div>
     </div>
 </div>
+
 @endsection
+
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
@@ -363,9 +299,9 @@ function waitForDependencies() {
     
     // Prepare chart data
     const chartData = {
-        reporters: {
-            labels: {!! json_encode($chartData['reporters']['labels'] ?? []) !!},
-            data: {!! json_encode($chartData['reporters']['data'] ?? []) !!}
+        dept_id: {
+            labels: {!! json_encode($chartData['dept_id']['labels'] ?? []) !!},
+            data: {!! json_encode($chartData['dept_id']['data'] ?? []) !!}
         },
         trend: {
             labels: {!! json_encode($chartData['trend']['labels'] ?? []) !!},
@@ -373,6 +309,7 @@ function waitForDependencies() {
         }
     };
     
+    console.log('📊 Chart data for dept_id:', chartData.dept_id);
     console.log('📊 Calling initDamagesDetail with data:', chartData);
     window.ICTAssetApp.initDamagesDetail(chartData);
 }

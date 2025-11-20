@@ -7,16 +7,59 @@ use Illuminate\Database\Eloquent\Model;
 class Asset extends Model
 {
     protected $fillable = [
+        // Basic Identity
+        'code',
         'asset_tag',
         'serial_number',
+        'serial_clean',
+        'service_tag',
+
+        // Asset Type & Assignment
         'asset_type_id',
         'assigned_to',
         'assignment_date',
+        'assignment_status',
+
+        // Status
         'status',
         'last_status_date',
+
+        // Purchase Info
+        'pr_ref',
+        'po_ref',
+        'ref',
+        'delivery_date',
+
+        // Item Details
+        'item_name',
+        'brand',
+        'type',
+        'memory',
+        'specifications',
+
+        // Employee Info
+        'ghrs_id',
+        'badge_id',
+        'username',
+        'email_address',
+
+        // Location & Department
+        'location',
+        'location_site',
+        'dept_project',
+        'cost_center',
+
+        // Compliance
+        'soc_compliant',
+
+        // Computer Specific
+        'device_name',
+
+        // Notes
         'notes',
-        'quantity'
+        'remarks',
     ];
+
 
     protected $casts = [
         'last_status_date' => 'date',

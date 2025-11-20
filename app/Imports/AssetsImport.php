@@ -5,163 +5,672 @@ namespace App\Imports;
 use App\Models\Asset;
 use App\Models\AssetType;
 use App\Models\Employee;
-use App\Models\AssetHistory;
-use Maatwebsite\Excel\Concerns\ToModel;
+use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
-use Maatwebsite\Excel\Concerns\SkipsOnError;
-use Maatwebsite\Excel\Concerns\SkipsErrors;
-use Maatwebsite\Excel\Concerns\SkipsOnFailure;
-use Maatwebsite\Excel\Concerns\SkipsFailures;
+use Maatwebsite\Excel\Concerns\WithChunkReading;
+use Illuminate\Support\Collection;
 use Carbon\Carbon;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
-class AssetsImport implements ToModel, WithHeadingRow, SkipsOnError, SkipsOnFailure
+class AssetsImport implements 
+    ToCollection,
+    WithHeadingRow,
+    WithChunkReading
 {
-    use SkipsErrors, SkipsFailures;
-
     private $createdCount = 0;
     private $updatedCount = 0;
     private $skippedCount = 0;
-    private $employeesCreatedCount = 0;
+    private $assetTypesCreatedCount = 0;
+    private $skipReasons = []; // ✅ Track skip reasons
     
-    /**
-     * Column mapping - Excel column variants to exact database columns
-     */
+    private $assetTypesCache = [];
+    private $employeesCache = [];
+    private $existingAssetsCache = [];
+    private static $processedTags = [];
+    private static $tagCounter = 1;
+    private static $isFirstBatch = true;
+    
+    private $assetBatch = [];
+    private $batchSize = 500;
+    
     private $columnMapping = [
-        // ASSETS table columns (exact match with DB)
-        'asset_tag' => ['asset_tag', 'assettag', 'tag', 'asset tag', 'no_asset', 'no asset', 'asset no'],
-        'serial_number' => ['serial_number', 'serialnumber', 'serial', 'sn', 'serial no'],
-        'asset_type_id' => ['asset_type_id', 'assettypeid', 'type_id', 'typeid'],
-        'asset_type_name' => ['asset_type', 'assettype', 'type', 'type name', 'typename', 'tipe', 'jenis'],
-        'assigned_to' => ['assigned_to', 'assignedto', 'assigned to'],
-        'status' => ['status', 'condition', 'kondisi', 'asset status'],
-        'assignment_date' => ['assignment_date', 'assignmentdate', 'assign_date', 'assigndate', 'date assigned'],
-        'last_status_date' => ['last_status_date', 'laststatusdate', 'status_date', 'statusdate', 'last status date'],
-        'notes' => ['notes', 'note', 'catatan', 'keterangan', 'remarks', 'remark', 'description'],
+        // Excel columns mapping
+        'code' => ['code', 'no', 'no.'],
+        'pr_ref' => ['pr_ref', 'prref', 'pr'],
+        'po_ref' => ['po_ref', 'poref', 'po', 'po ref'],
+        'asset_tag' => ['asset_tag', 'assettag', 'tag'],
+        'status' => ['status', 'condition'],
+        'assignment_date' => ['assignment_date', 'assignmentdate', 'assignment date'],
+        'assignment_status' => ['assignment_status', 'assignmentstatus', 'assignment status'],
+        'serial_number' => ['serial_number', 'serialnumber', 'serial number'],
+        'user_id' => ['user_id', 'userid', 'user id'],
+        'email_address' => ['email_address', 'emailaddress', 'email address'],
+        'employee_id' => ['employee_id', 'employeeid', 'employee id'], // ✅ Ini = GHRS ID
+        'department' => ['department', 'dept'],
+        'cost_center' => ['cost_center', 'costcenter', 'cost center'],
+        'location_site' => ['location_site', 'locationsite', 'location site'],
+        'location' => ['location', 'lokasi'],
+        'type' => ['type', 'item_type'],
+        'device_model' => ['device_model', 'devicemodel', 'device model'],
+        'memory' => ['memory', 'ram'],
+        'remarks' => ['remarks', 'remark', 'notes'],
+        'soc_compliant' => ['soc_compliant', 'soccompliant', 'soc compliant'],
+        'ref' => ['ref', 'reference'],
+        'dept_cost_center' => ['dept___cost_center', 'dept_cost_center', 'dept - cost center'],
         
-        // EMPLOYEES table columns (exact match with DB)
-        'employee_id' => ['employee_id', 'employeeid', 'emp_id', 'empid', 'nik', 'nip', 'staff id', 'staffid'],
-        'sam_account_name' => ['sam_account_name', 'samaccountname', 'sam', 'username', 'user_name', 'account name'],
-        'user_id' => ['user_id', 'userid'],
-        'employee_name' => ['name', 'employee_name', 'employeename', 'emp_name', 'empname', 'nama', 'full name', 'fullname'],
-        'email' => ['email', 'email_address', 'emailaddress', 'e_mail', 'mail'],
-        'department' => ['department', 'dept', 'departemen', 'divisi', 'division'],
-        'cost_center' => ['cost_center', 'costcenter', 'cost center', 'cc', 'cost centre'],
-        'is_active' => ['is_active', 'isactive', 'active', 'enabled', 'status karyawan', 'employee status'],
+        // Legacy columns (tetap support format lama)
+        'item_name' => ['item', 'item_name', 'itemname'],
+        'brand' => ['brand', 'merk'],
+        'service_tag' => ['service_tag', 'servicetag'],
+        'serial_clean' => ['serial_clean', 'serialclean'],
+        'ghrs_id' => ['ghrs_id', 'ghrsid'],
+        'badge_id' => ['badge_id', 'badgeid'],
+        'username' => ['username', 'user_name'],
+        'delivery_date' => ['delivery_date', 'deliverydate'],
+        'dept_project' => ['deptproject', 'dept_project', 'dept/project'],
+        'device_name' => ['device_name', 'devicename'],
+        'asset_type_name' => ['asset_type', 'assettype'],
     ];
 
-    public function model(array $row)
+    private $assetTypeKeywords = [
+        'Laptop' => ['laptop', 'notebook', 'macbook', 'thinkpad', 'latitude', 'elitebook'],
+        'Desktop' => ['desktop', 'pc', 'prodesk', 'optiplex'],
+        'Monitor' => ['monitor', 'display', 'screen'],
+        'Mouse' => ['mouse', 'mice'],
+        'Keyboard' => ['keyboard', 'keypad'],
+        'Printer' => ['printer', 'laserjet'],
+        'Headset' => ['headset', 'headphone'],
+        'Earphone' => ['earphone', 'earbud'],
+        'Docking' => ['docking', 'dock', 'wd22', 'ud22'],
+        'SSD' => ['ssd', 'solid state'],
+        'VGA Card' => ['vga', 'graphics', 'nvidia', 'geforce'],
+        'USB Hub' => ['usb hub', 'hub'],
+        'Webcam' => ['webcam', 'camera'],
+        'Cable' => ['cable', 'kabel', 'hdmi'],
+        'UPS' => ['ups', 'battery backup'],
+        'Router' => ['router', 'switch', 'access point'],
+        'Adapter' => ['adapter', 'charger'],
+    ];
+
+    public function __construct()
     {
-        // Normalize and map columns
-        $normalizedRow = $this->normalizeRow($row);
-        $mappedData = $this->mapColumns($normalizedRow);
+        set_time_limit(600);
+        ini_set('memory_limit', '1024M');
         
-        // Skip if no asset_tag
-        if (empty($mappedData['asset_tag'])) {
-            $this->skippedCount++;
-            return null;
-        }
+        // Pre-load caches
+        $this->assetTypesCache = AssetType::all()->keyBy(function($item) {
+            return strtolower($item->name);
+        })->toArray();
+        
+        $employees = Employee::select('id', 'ghrs_id', 'badge_id', 'name')->get();
+        $this->employeesCache = [
+            'ghrs' => $employees->whereNotNull('ghrs_id')->pluck('id', 'ghrs_id')->toArray(),
+            'badge' => $employees->whereNotNull('badge_id')->pluck('id', 'badge_id')->toArray(),
+            'name' => $employees->pluck('id', 'name')->toArray(),
+        ];
+        
+        $this->existingAssetsCache = Asset::pluck('id', 'asset_tag')->toArray();
+        
+        Log::info('🚀 Asset import initialized', [
+            'asset_types' => count($this->assetTypesCache),
+            'employees' => array_sum(array_map('count', $this->employeesCache)),
+            'existing_assets' => count($this->existingAssetsCache)
+        ]);
+    }
 
-        try {
-            // 1. GET ASSET TYPE ID
-            $assetTypeId = $this->getAssetTypeId($mappedData);
-            if (!$assetTypeId) {
-                $this->skippedCount++;
-                \Log::warning('Asset import skipped - Asset type not found', [
-                    'asset_tag' => $mappedData['asset_tag'],
-                    'asset_type' => $mappedData['asset_type_name'] ?? $mappedData['asset_type_id'] ?? 'N/A'
+    public function collection(Collection $rows)
+    {
+        $startTime = microtime(true);
+        
+        // ✅ STEP 3B: Hapus semua Laptop & Desktop (hanya sekali di batch pertama)
+        if (self::$isFirstBatch) {
+            DB::transaction(function() {
+                $deletedCount = Asset::whereIn('type', ['Laptop', 'Desktop'])->delete();
+                
+                Log::info('🗑️ Deleted old Laptop & Desktop assets', [
+                    'count' => $deletedCount
                 ]);
-                return null;
-            }
-
-            // 2. HANDLE EMPLOYEE (assigned_to)
-            $assignedToId = $this->handleEmployee($mappedData);
-
-            // 3. CHECK IF ASSET EXISTS
-            $existingAsset = Asset::where('asset_tag', $mappedData['asset_tag'])->first();
+            });
             
-            // 4. PREPARE ASSET DATA - only non-null values
-            $assetData = $this->prepareAssetData($mappedData, $assetTypeId, $assignedToId);
-
-            // 5. CREATE or UPDATE
-            if ($existingAsset) {
-                // UPDATE existing asset
-                $oldAssignedTo = $existingAsset->assigned_to;
-                $existingAsset->update($assetData);
+            // Refresh cache setelah delete
+            $this->existingAssetsCache = Asset::pluck('id', 'asset_tag')->toArray();
+            
+            self::$isFirstBatch = false;
+        }
+        
+        $this->assetBatch = [];
+        
+        Log::info('📥 Processing asset rows', ['total' => $rows->count()]);
+        
+        foreach ($rows as $index => $row) {
+            try {
+                $normalizedRow = $this->normalizeRow($row->toArray());
+                $mappedData = $this->mapColumns($normalizedRow);
                 
-                // Handle assignment history
-                $this->handleAssetHistory($existingAsset, $oldAssignedTo, $assignedToId, 'Updated via Excel import');
-                
-                $this->updatedCount++;
-            } else {
-                // CREATE new asset
-                
-                // Check serial_number duplicate
-                if (!empty($mappedData['serial_number'])) {
-                    $existingSerial = Asset::where('serial_number', $mappedData['serial_number'])->first();
-                    if ($existingSerial) {
-                        $this->skippedCount++;
-                        \Log::warning('Asset import skipped - Duplicate serial number', [
-                            'asset_tag' => $mappedData['asset_tag'],
-                            'serial_number' => $mappedData['serial_number']
-                        ]);
-                        return null;
-                    }
-                }
-
-                $asset = Asset::create($assetData);
-
-                // Create history if assigned
-                if ($assignedToId) {
-                    AssetHistory::create([
-                        'asset_id' => $asset->id,
-                        'employee_id' => $assignedToId,
-                        'assignment_date' => $asset->assignment_date ?? now(),
-                        'notes' => 'Created via Excel import'
+                // Debug first 3 rows
+                if ($index < 3) {
+                    Log::info("Asset Row " . ($index + 2), [
+                        'normalized_keys' => array_keys($normalizedRow),
+                        'mapped_data' => array_keys($mappedData)
                     ]);
                 }
-
-                $this->createdCount++;
+                
+                // SKIP jika benar-benar kosong
+                if ($this->isCompletelyEmpty($mappedData)) {
+                    $this->skippedCount++;
+                    $this->skipReasons['empty_row'] = ($this->skipReasons['empty_row'] ?? 0) + 1; // ✅ Track
+                    
+                    // Log first 10 skipped rows for debugging
+                    if ($this->skippedCount <= 10) {
+                        Log::warning("Row " . ($index + 2) . " - Skipped (empty)", [
+                            'raw_row' => array_filter($normalizedRow),
+                            'mapped_data' => $mappedData
+                        ]);
+                    }
+                    continue;
+                }
+                
+                // Generate asset_tag jika kosong
+                if (empty($mappedData['asset_tag'])) {
+                    $mappedData['asset_tag'] = $this->generateUniqueAssetTag($mappedData, $index);
+                }
+                
+                // Check existing
+                $existingAssetId = $this->existingAssetsCache[$mappedData['asset_tag']] ?? null;
+                
+                // Prepare data
+                $assetData = $this->prepareAssetData($mappedData);
+                
+                if ($existingAssetId) {
+                    // UPDATE (jarang terjadi karena sudah di-delete)
+                    Asset::where('id', $existingAssetId)->update($assetData);
+                    $this->updatedCount++;
+                } else {
+                    // INSERT
+                    $this->assetBatch[] = $assetData;
+                    
+                    if (count($this->assetBatch) >= $this->batchSize) {
+                        $this->flushBatch();
+                    }
+                }
+                
+            } catch (\Exception $e) {
+                $this->skippedCount++;
+                $this->skipReasons['error'] = ($this->skipReasons['error'] ?? 0) + 1; // ✅ Track
+                
+                // Log error details
+                Log::error('Asset row ' . ($index + 2) . ' error', [
+                    'error' => $e->getMessage(),
+                    'file' => basename($e->getFile()),
+                    'line' => $e->getLine(),
+                    'asset_tag' => $mappedData['asset_tag'] ?? 'N/A',
+                    'serial' => $mappedData['serial_number'] ?? 'N/A',
+                    'employee_id' => $mappedData['employee_id'] ?? 'N/A'
+                ]);
             }
+        }
+        
+        // Flush remaining
+        if (!empty($this->assetBatch)) {
+            $this->flushBatch();
+        }
+        
+        $duration = round(microtime(true) - $startTime, 2);
+        
+        Log::info('✅ Asset import completed', [
+            'created' => $this->createdCount,
+            'updated' => $this->updatedCount,
+            'skipped' => $this->skippedCount,
+            'skip_reasons' => $this->skipReasons, // ✅ Show reasons
+            'asset_types_created' => $this->assetTypesCreatedCount,
+            'duration' => $duration . 's'
+        ]);
+    }
 
-            return null;
-
+    private function flushBatch()
+    {
+        if (empty($this->assetBatch)) return;
+        
+        try {
+            DB::transaction(function() {
+                $chunks = array_chunk($this->assetBatch, 100);
+                
+                foreach ($chunks as $chunk) {
+                    Asset::insert($chunk);
+                }
+                
+                $this->createdCount += count($this->assetBatch);
+                
+                foreach ($this->assetBatch as $asset) {
+                    $this->existingAssetsCache[$asset['asset_tag']] = true;
+                }
+            });
+            
+            Log::info('✓ Batch inserted', ['count' => count($this->assetBatch)]);
+            
         } catch (\Exception $e) {
-            $this->skippedCount++;
-            \Log::error('Asset import error', [
-                'asset_tag' => $mappedData['asset_tag'] ?? 'N/A',
+            Log::error('Batch insert failed', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'batch_size' => count($this->assetBatch)
             ]);
+            
+            // Fallback: insert one by one
+            foreach ($this->assetBatch as $asset) {
+                try {
+                    Asset::create($asset);
+                    $this->createdCount++;
+                } catch (\Exception $e2) {
+                    Log::error('Single insert failed', [
+                        'asset_tag' => $asset['asset_tag'],
+                        'error' => $e2->getMessage()
+                    ]);
+                    $this->skippedCount++;
+                    $this->skipReasons['insert_failed'] = ($this->skipReasons['insert_failed'] ?? 0) + 1; // ✅ Track
+                }
+            }
+        }
+        
+        $this->assetBatch = [];
+    }
+
+    private function prepareAssetData(array $data): array
+    {
+        $now = now();
+        
+        // ✅ ALWAYS include ALL columns dengan default NULL untuk konsistensi
+        $assetData = [
+            'asset_tag' => $data['asset_tag'],
+            'asset_type_id' => null,
+            'assigned_to' => null,
+            'ghrs_id' => null,
+            'badge_id' => null,
+            'status' => 'In Stock',
+            'last_status_date' => $now,
+            'serial_number' => null,
+            'serial_clean' => null,
+            'service_tag' => null,
+            'assignment_date' => null,
+            'delivery_date' => null,
+            'pr_ref' => null,
+            'po_ref' => null,
+            'ref' => null,
+            'item_name' => null,
+            'brand' => null,
+            'type' => null,
+            'code' => null,
+            'email_address' => null,
+            'cost_center' => null,
+            'location_site' => null,
+            'assignment_status' => null,
+            'soc_compliant' => null,
+            'dept_cost_center' => null,
+            'memory' => null,
+            'username' => null,
+            'location' => null,
+            'dept_project' => null,
+            'device_name' => null,
+            'remarks' => null,
+            'specifications' => null,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ];
+        
+        // Detect asset type
+        $assetTypeId = $this->detectAssetType($data);
+        if ($assetTypeId) {
+            $assetData['asset_type_id'] = $assetTypeId;
+        }
+        
+        // ✅ NEW: Link employee via EMPLOYEE ID (yang = GHRS ID)
+        $assignedToId = null;
+        $ghrsId = $data['employee_id'] ?? null; // EMPLOYEE ID dari Excel
+        
+        if ($ghrsId) {
+            $employee = Employee::where('ghrs_id', $ghrsId)->first();
+            if ($employee) {
+                $assignedToId = $employee->id;
+                $assetData['ghrs_id'] = $ghrsId;
+                $assetData['badge_id'] = $employee->badge_id;
+            } else {
+                // Log jika tidak ditemukan
+                Log::warning('Employee not found', ['ghrs_id' => $ghrsId]);
+                $assetData['ghrs_id'] = $ghrsId; // Tetap simpan meski employee tidak ada
+            }
+        }
+        
+        if ($assignedToId) {
+            $assetData['assigned_to'] = $assignedToId;
+        }
+        
+        // Status
+        $assetData['status'] = $this->determineStatus($data, $assignedToId);
+        $assetData['last_status_date'] = $this->parseDate($data['last_status_date'] ?? null) ?? $now;
+        
+        // Serial numbers
+        if (!empty($data['serial_number'])) {
+            $cleaned = $this->cleanSerialNumber($data['serial_number']);
+            $assetData['serial_number'] = $cleaned;
+            $assetData['serial_clean'] = preg_replace('/[^A-Z0-9]/', '', strtoupper($cleaned));
+        }
+        
+        if (!empty($data['service_tag'])) {
+            $assetData['service_tag'] = $data['service_tag'];
+        }
+        
+        // Dates
+        if (!empty($data['assignment_date'])) {
+            $assetData['assignment_date'] = $this->parseDate($data['assignment_date']);
+        }
+        
+        if (!empty($data['delivery_date'])) {
+            $assetData['delivery_date'] = $this->parseDate($data['delivery_date']);
+        }
+        
+        // Purchase info
+        if (!empty($data['pr_ref'])) {
+            $assetData['pr_ref'] = substr($data['pr_ref'], 0, 50);
+        }
+        if (!empty($data['po_ref'])) {
+            $assetData['po_ref'] = substr($data['po_ref'], 0, 50);
+        }
+        
+        // Item details
+        if (!empty($data['item_name'])) {
+            $assetData['item_name'] = substr($data['item_name'], 0, 100);
+        }
+        if (!empty($data['brand'])) {
+            $assetData['brand'] = substr($data['brand'], 0, 50);
+        }
+        if (!empty($data['type'])) {
+            $assetData['type'] = substr($data['type'], 0, 100);
+        }
+        
+        // ✅ NEW: Excel columns
+        if (!empty($data['code'])) {
+            $assetData['code'] = substr($data['code'], 0, 50);
+        }
+        if (!empty($data['email_address'])) {
+            $assetData['email_address'] = substr($data['email_address'], 0, 100);
+        }
+        if (!empty($data['cost_center'])) {
+            $assetData['cost_center'] = substr($data['cost_center'], 0, 50);
+        }
+        if (!empty($data['location_site'])) {
+            $assetData['location_site'] = substr($data['location_site'], 0, 150);
+        }
+        if (!empty($data['assignment_status'])) {
+            $assetData['assignment_status'] = substr($data['assignment_status'], 0, 50);
+        }
+        if (!empty($data['soc_compliant'])) {
+            $assetData['soc_compliant'] = substr($data['soc_compliant'], 0, 10);
+        }
+        if (!empty($data['ref'])) {
+            $assetData['ref'] = substr($data['ref'], 0, 50);
+        }
+        if (!empty($data['dept_cost_center'])) {
+            $assetData['dept_cost_center'] = substr($data['dept_cost_center'], 0, 150);
+        }
+        if (!empty($data['memory'])) {
+            $assetData['memory'] = substr($data['memory'], 0, 50);
+        }
+        
+        // User info
+        if (!empty($data['user_id'])) {
+            $assetData['username'] = substr($data['user_id'], 0, 100);
+        }
+        
+        // Location
+        if (!empty($data['location'])) {
+            $assetData['location'] = substr($data['location'], 0, 150);
+        }
+        if (!empty($data['dept_project']) || !empty($data['department'])) {
+            $assetData['dept_project'] = substr($data['dept_project'] ?? $data['department'], 0, 100);
+        }
+        
+        // Device info
+        if (!empty($data['device_model']) || !empty($data['device_name'])) {
+            $assetData['device_name'] = substr($data['device_model'] ?? $data['device_name'], 0, 100);
+        }
+        
+        // Remarks
+        if (!empty($data['remarks'])) {
+            $assetData['remarks'] = $data['remarks'];
+        }
+        
+        // Specifications (combine memory if available)
+        $specs = [];
+        if (!empty($data['device_model'])) {
+            $specs[] = "Model: " . $data['device_model'];
+        }
+        if (!empty($data['memory'])) {
+            $specs[] = "Memory: " . $data['memory'];
+        }
+        if (!empty($specs)) {
+            $assetData['specifications'] = implode(' | ', $specs);
+        }
+        
+        return $assetData;
+    }
+
+    private function isCompletelyEmpty(array $data): bool
+    {
+        $importantFields = ['asset_tag', 'serial_number', 'item_name', 'type', 'device_model', 'employee_id'];
+        
+        foreach ($importantFields as $field) {
+            if (!empty($data[$field])) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
+    private function generateUniqueAssetTag(array $data, int $index): string
+    {
+        if (!empty($data['serial_number'])) {
+            $serial = preg_replace('/[^A-Z0-9]/', '', strtoupper($data['serial_number']));
+            if (strlen($serial) >= 6) {
+                $tag = 'AST-' . substr($serial, -8);
+                if (!isset($this->existingAssetsCache[$tag]) && !in_array($tag, self::$processedTags)) {
+                    self::$processedTags[] = $tag;
+                    return $tag;
+                }
+            }
+        }
+        
+        if (!empty($data['item_name']) || !empty($data['type'])) {
+            $prefix = $this->extractPrefix($data['item_name'] ?? $data['type']);
+            do {
+                $tag = $prefix . str_pad(self::$tagCounter, 4, '0', STR_PAD_LEFT);
+                self::$tagCounter++;
+            } while (isset($this->existingAssetsCache[$tag]) || in_array($tag, self::$processedTags));
+            
+            self::$processedTags[] = $tag;
+            return $tag;
+        }
+        
+        do {
+            $tag = 'AST-' . date('ymd') . '-' . str_pad(self::$tagCounter, 4, '0', STR_PAD_LEFT);
+            self::$tagCounter++;
+        } while (isset($this->existingAssetsCache[$tag]) || in_array($tag, self::$processedTags));
+        
+        self::$processedTags[] = $tag;
+        return $tag;
+    }
+
+    private function extractPrefix(string $itemName): string
+    {
+        $itemUpper = strtoupper($itemName);
+        
+        $prefixes = [
+            'LAP-' => ['LAPTOP', 'NOTEBOOK'],
+            'DES-' => ['DESKTOP', 'PC'],
+            'MON-' => ['MONITOR'],
+            'MOU-' => ['MOUSE'],
+            'KEY-' => ['KEYBOARD'],
+            'HDS-' => ['HEADSET'],
+            'EAR-' => ['EARPHONE'],
+            'DOC-' => ['DOCKING'],
+            'SSD-' => ['SSD'],
+            'VGA-' => ['VGA'],
+            'CAB-' => ['CABLE'],
+        ];
+        
+        foreach ($prefixes as $prefix => $keywords) {
+            foreach ($keywords as $keyword) {
+                if (Str::contains($itemUpper, $keyword)) {
+                    return $prefix;
+                }
+            }
+        }
+        
+        return 'AST-';
+    }
+
+    private function cleanSerialNumber(string $serial): string
+    {
+        if (preg_match('/S\/N:\s*([A-Z0-9]+)/i', $serial, $matches)) {
+            return strtoupper($matches[1]);
+        }
+        
+        $serial = preg_replace('/^(SN|S\/N|SERIAL)[:.\s]*/i', '', $serial);
+        return trim($serial);
+    }
+
+    private function determineStatus(array $data, ?int $assignedToId): string
+    {
+        if (!empty($data['status'])) {
+            return $this->validateStatus($data['status']);
+        }
+        
+        return $assignedToId !== null ? 'In Use' : 'In Stock';
+    }
+
+    private function validateStatus(string $status): string
+    {
+        $statusMap = [
+            'in stock' => 'In Stock',
+            'in use' => 'In Use',
+            'broken' => 'Broken',
+            'retired' => 'Retired',
+            'taken' => 'Taken',
+        ];
+        
+        return $statusMap[strtolower(trim($status))] ?? 'In Stock';
+    }
+
+    private function detectAssetType(array $data): ?int
+    {
+        $searchText = strtolower(trim(
+            ($data['asset_type_name'] ?? '') . ' ' . 
+            ($data['item_name'] ?? '') . ' ' . 
+            ($data['brand'] ?? '') . ' ' .
+            ($data['type'] ?? '') . ' ' .
+            ($data['device_model'] ?? '')
+        ));
+        
+        if (empty($searchText)) {
+            return null;
+        }
+        
+        foreach ($this->assetTypesCache as $name => $type) {
+            if (Str::contains($searchText, $name)) {
+                return $type['id'];
+            }
+        }
+        
+        foreach ($this->assetTypeKeywords as $typeName => $keywords) {
+            foreach ($keywords as $keyword) {
+                if (Str::contains($searchText, $keyword)) {
+                    $typeNameLower = strtolower($typeName);
+                    if (isset($this->assetTypesCache[$typeNameLower])) {
+                        return $this->assetTypesCache[$typeNameLower]['id'];
+                    }
+                    return $this->createAssetType($typeName);
+                }
+            }
+        }
+        
+        if (!empty($data['asset_type_name'])) {
+            return $this->createAssetType(ucwords(strtolower(trim($data['asset_type_name']))));
+        }
+        
+        return null;
+    }
+
+    private function createAssetType(string $typeName): int
+    {
+        $typeNameLower = strtolower($typeName);
+        
+        if (isset($this->assetTypesCache[$typeNameLower])) {
+            return $this->assetTypesCache[$typeNameLower]['id'];
+        }
+        
+        $assetType = AssetType::create([
+            'name' => $typeName,
+            'category' => $this->guessCategory($typeName),
+            'description' => 'Auto-created during import'
+        ]);
+        
+        $this->assetTypesCache[$typeNameLower] = [
+            'id' => $assetType->id,
+            'name' => $assetType->name
+        ];
+        
+        $this->assetTypesCreatedCount++;
+        
+        return $assetType->id;
+    }
+
+    private function guessCategory(string $typeName): string
+    {
+        $typeLower = strtolower($typeName);
+        
+        if (Str::contains($typeLower, ['laptop', 'desktop', 'monitor', 'keyboard', 'mouse', 'printer'])) {
+            return 'Hardware';
+        }
+        
+        return 'Peripheral';
+    }
+
+    private function parseDate($date)
+    {
+        if (empty($date)) return null;
+        
+        try {
+            if (is_numeric($date)) {
+                return Carbon::instance(\PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($date))->format('Y-m-d');
+            }
+            return Carbon::parse($date)->format('Y-m-d');
+        } catch (\Exception $e) {
             return null;
         }
     }
 
-    /**
-     * Normalize row keys: lowercase, remove spaces and special chars
-     */
     private function normalizeRow(array $row): array
     {
         $normalized = [];
         foreach ($row as $key => $value) {
-            if ($key === null || $value === null) continue;
+            if ($key === null) continue;
             
             $normalizedKey = strtolower(trim($key));
-            $normalizedKey = preg_replace('/[^a-z0-9_]/', '', str_replace(' ', '_', $normalizedKey));
-            $normalized[$normalizedKey] = trim($value);
+            $normalizedKey = preg_replace('/[^a-z0-9_]/', '', str_replace([' ', '-', '.', '/', '#'], '_', $normalizedKey));
+            
+            $normalized[$normalizedKey] = $value !== null && is_string($value) ? trim($value) : $value;
         }
+        
         return $normalized;
     }
 
-    /**
-     * Map Excel columns to exact database columns
-     */
     private function mapColumns(array $normalizedRow): array
     {
         $mapped = [];
         
         foreach ($this->columnMapping as $dbField => $excelVariants) {
             foreach ($excelVariants as $variant) {
-                $normalizedVariant = strtolower(preg_replace('/[^a-z0-9_]/', '', str_replace(' ', '_', $variant)));
+                $normalizedVariant = strtolower(preg_replace('/[^a-z0-9_]/', '', str_replace([' ', '-', '.', '/', '#'], '_', $variant)));
                 
                 if (isset($normalizedRow[$normalizedVariant]) && $normalizedRow[$normalizedVariant] !== '') {
                     $mapped[$dbField] = $normalizedRow[$normalizedVariant];
@@ -173,185 +682,14 @@ class AssetsImport implements ToModel, WithHeadingRow, SkipsOnError, SkipsOnFail
         return $mapped;
     }
 
-    /**
-     * Get asset_type_id from name or direct ID
-     */
-    private function getAssetTypeId(array $data): ?int
+    public function chunkSize(): int
     {
-        // Direct asset_type_id
-        if (!empty($data['asset_type_id']) && is_numeric($data['asset_type_id'])) {
-            $exists = AssetType::find($data['asset_type_id']);
-            if ($exists) return (int)$data['asset_type_id'];
-        }
-        
-        // From asset_type name
-        if (!empty($data['asset_type_name'])) {
-            $assetType = AssetType::where('name', 'LIKE', '%' . $data['asset_type_name'] . '%')->first();
-            if ($assetType) return $assetType->id;
-            
-            // Exact match
-            $assetType = AssetType::where('name', $data['asset_type_name'])->first();
-            if ($assetType) return $assetType->id;
-        }
-        
-        return null;
+        return 1000;
     }
 
-    /**
-     * Handle employee: find or auto-create
-     */
-    private function handleEmployee(array $data): ?int
-    {
-        // Check if employee specified
-        $employeeIdentifier = $data['employee_id'] ?? $data['assigned_to'] ?? null;
-        
-        if (empty($employeeIdentifier)) {
-            return null;
-        }
-
-        // Find employee by employee_id or id
-        $employee = Employee::where('employee_id', $employeeIdentifier)
-            ->orWhere('id', $employeeIdentifier)
-            ->first();
-        
-        // Auto-create employee if not exists and has name
-        if (!$employee && !empty($data['employee_name'])) {
-            $employee = Employee::create([
-                'employee_id' => $employeeIdentifier,
-                'sam_account_name' => $data['sam_account_name'] ?? null,
-                'user_id' => !empty($data['user_id']) ? $data['user_id'] : null,
-                'name' => $data['employee_name'],
-                'email' => $data['email'] ?? $employeeIdentifier . '@temp.local',
-                'department' => $data['department'] ?? 'Not Available',
-                'cost_center' => $data['cost_center'] ?? null,
-                'is_active' => isset($data['is_active']) ? filter_var($data['is_active'], FILTER_VALIDATE_BOOLEAN) : true
-            ]);
-            
-            $this->employeesCreatedCount++;
-            
-            \Log::info('Auto-created employee during import', [
-                'employee_id' => $employeeIdentifier,
-                'name' => $data['employee_name']
-            ]);
-        }
-        
-        return $employee ? $employee->id : null;
-    }
-
-    /**
-     * Prepare asset data for create/update - exact DB columns only
-     */
-    private function prepareAssetData(array $data, int $assetTypeId, ?int $assignedToId): array
-    {
-        $assetData = [
-            'asset_tag' => $data['asset_tag'],
-            'asset_type_id' => $assetTypeId,
-            'last_status_date' => $this->parseDate($data['last_status_date'] ?? null) ?? now(),
-        ];
-
-        // Optional fields - only add if not empty
-        if (!empty($data['serial_number'])) {
-            $assetData['serial_number'] = $data['serial_number'];
-        }
-        
-        if ($assignedToId !== null) {
-            $assetData['assigned_to'] = $assignedToId;
-        }
-        
-        if (!empty($data['status'])) {
-            $assetData['status'] = $this->validateStatus($data['status']);
-        }
-        
-        if (!empty($data['assignment_date'])) {
-            $assetData['assignment_date'] = $this->parseDate($data['assignment_date']);
-        }
-        
-        if (!empty($data['notes'])) {
-            $assetData['notes'] = $data['notes'];
-        }
-
-        return $assetData;
-    }
-
-    /**
-     * Validate status against DB enum values
-     */
-    private function validateStatus(string $status): string
-    {
-        // Exact DB enum values
-        $validStatuses = ['In Stock', 'In Use', 'Broken', 'Retired', 'Taken'];
-        
-        // Exact match (case-insensitive)
-        foreach ($validStatuses as $valid) {
-            if (strcasecmp($valid, $status) === 0) {
-                return $valid;
-            }
-        }
-        
-        // Fuzzy match
-        foreach ($validStatuses as $valid) {
-            if (stripos($valid, $status) !== false || stripos($status, $valid) !== false) {
-                return $valid;
-            }
-        }
-        
-        return 'In Stock'; // Default
-    }
-
-    /**
-     * Parse date with multiple formats
-     */
-    private function parseDate($date)
-    {
-        if (empty($date)) return null;
-        
-        try {
-            // Excel serial date number
-            if (is_numeric($date)) {
-                return Carbon::instance(\PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($date));
-            }
-            
-            // Parse various date formats
-            return Carbon::parse($date);
-        } catch (\Exception $e) {
-            \Log::warning('Date parse failed', ['date' => $date, 'error' => $e->getMessage()]);
-            return null;
-        }
-    }
-
-    /**
-     * Handle asset history when assignment changes
-     */
-    private function handleAssetHistory($asset, $oldEmployeeId, $newEmployeeId, $notes = null)
-    {
-        if ($oldEmployeeId != $newEmployeeId) {
-            // Close old history
-            if ($oldEmployeeId) {
-                $lastHistory = AssetHistory::where('asset_id', $asset->id)
-                    ->where('employee_id', $oldEmployeeId)
-                    ->whereNull('return_date')
-                    ->first();
-                
-                if ($lastHistory) {
-                    $lastHistory->update(['return_date' => now()]);
-                }
-            }
-
-            // Create new history
-            if ($newEmployeeId) {
-                AssetHistory::create([
-                    'asset_id' => $asset->id,
-                    'employee_id' => $newEmployeeId,
-                    'assignment_date' => now(),
-                    'notes' => $notes
-                ]);
-            }
-        }
-    }
-
-    // Getters for statistics
     public function getCreatedCount(): int { return $this->createdCount; }
     public function getUpdatedCount(): int { return $this->updatedCount; }
     public function getSkippedCount(): int { return $this->skippedCount; }
-    public function getEmployeesCreatedCount(): int { return $this->employeesCreatedCount; }
+    public function getAssetTypesCreatedCount(): int { return $this->assetTypesCreatedCount; }
+    public function getSkipReasons(): array { return $this->skipReasons; } // ✅ NEW
 }

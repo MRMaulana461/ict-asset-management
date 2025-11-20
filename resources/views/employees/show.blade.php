@@ -4,7 +4,7 @@
 
 @section('content')
 <div class="flex justify-between items-center mb-6">
-    <h1 class="text-3xl font-bold text-gray-800">Detail Employee</h1>
+    <h1 class="text-3xl font-bold text-gray-800">Employee Details</h1>
     <div class="flex gap-3">
         <a href="{{ route('employees.edit', $employee) }}" 
            class="bg-saipem-primary text-white px-6 py-2.5 rounded-lg hover:bg-opacity-90 transition flex items-center">
@@ -13,7 +13,7 @@
         </a>
         <a href="{{ route('employees.index') }}" 
            class="bg-gray-200 text-gray-700 px-6 py-2.5 rounded-lg hover:bg-gray-300 transition">
-            Kembali
+            Back
         </a>
     </div>
 </div>
@@ -21,12 +21,12 @@
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <!-- Employee Info -->
     <div class="lg:col-span-2 bg-white p-8 rounded-xl shadow-lg">
-        <h2 class="text-xl font-bold text-gray-800 mb-6">Informasi Employee</h2>
+        <h2 class="text-xl font-bold text-gray-800 mb-6">Employee Information</h2>
         
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
                 <label class="block text-sm font-medium text-gray-500 mb-1">Employee ID</label>
-                <p class="text-lg font-semibold text-gray-900">{{ $employee->employee_id }}</p>
+                <p class="text-lg font-semibold text-gray-900">{{ $employee->ghrs_id }}</p>
             </div>
 
             <div>
@@ -70,7 +70,7 @@
     <!-- Stats -->
     <div class="space-y-6">
         <div class="bg-white p-6 rounded-xl shadow-lg">
-            <h3 class="text-lg font-semibold text-gray-700 mb-4">Statistik</h3>
+            <h3 class="text-lg font-semibold text-gray-700 mb-4">Statistics</h3>
             <div class="space-y-3">
                 <div class="flex justify-between">
                     <span class="text-gray-600">Assets Assigned</span>
@@ -91,7 +91,7 @@
 
 <!-- Assets Assigned -->
 <div class="mt-8 bg-white p-6 rounded-xl shadow-lg">
-    <h2 class="text-xl font-bold text-gray-800 mb-4">Assets yang Di-assign</h2>
+    <h2 class="text-xl font-bold text-gray-800 mb-4">Assigned Asset</h2>
     
     @if($employee->assets->count() > 0)
         <div class="overflow-x-auto">
@@ -127,23 +127,23 @@
             </table>
         </div>
     @else
-        <p class="text-gray-500">Belum ada asset yang di-assign</p>
+        <p class="text-gray-500">There are no assigned asset</p>
     @endif
 </div>
 
 <!-- Loan History -->
 <div class="mt-8 bg-white p-6 rounded-xl shadow-lg">
-    <h2 class="text-xl font-bold text-gray-800 mb-4">Riwayat Peminjaman</h2>
+    <h2 class="text-xl font-bold text-gray-800 mb-4">Loan History</h2>
     
     @if($employee->loanLogs->count() > 0)
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tanggal Pinjam</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Loan Date</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Qty</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tanggal Kembali</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Return Date</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                     </tr>
                 </thead>
@@ -158,9 +158,9 @@
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm">
                                 @if($loan->status == 'On Loan')
-                                    <span class="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-800">Dipinjam</span>
+                                    <span class="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-800">Borrowed</span>
                                 @else
-                                    <span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">Kembali</span>
+                                    <span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">Returned</span>
                                 @endif
                             </td>
                         </tr>
@@ -169,7 +169,7 @@
             </table>
         </div>
     @else
-        <p class="text-gray-500">Belum ada riwayat peminjaman</p>
+        <p class="text-gray-500">There are no loan history</p>
     @endif
 </div>
 @endsection

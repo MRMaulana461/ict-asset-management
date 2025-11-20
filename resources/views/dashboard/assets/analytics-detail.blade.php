@@ -67,7 +67,7 @@
                         <option value="">All Types</option>
                         @foreach($allAssetTypes as $type)
                             <option value="{{ $type->id }}" {{ request('asset_type_id') == $type->id ? 'selected' : '' }}>
-                                {{ $type->name }} ({{ $type->category }})
+                                {{ $type->name }} ({{ $type->category ?? 'N/A' }})
                             </option>
                         @endforeach
                     </select>
@@ -254,13 +254,14 @@
             
             <div class="space-y-4">
                 @forelse($assetsByType as $asset)
+                    @if($asset->assetType)
                     <div class="border border-gray-200 rounded-xl p-5 hover:border-saipem-accent hover:shadow-md transition-all duration-300 group">
                         <div class="flex justify-between items-start mb-4">
                             <div class="flex-1">
                                 <div class="flex items-center gap-3 mb-3">
                                     <h3 class="text-lg font-bold text-gray-800 group-hover:text-saipem-primary transition-colors">{{ $asset->assetType->name }}</h3>
                                     <span class="px-3 py-1 bg-gray-100 text-gray-700 text-xs rounded-full font-medium border">
-                                        {{ $asset->assetType->category }}
+                                        {{ $asset->assetType->category ?? 'N/A' }}
                                     </span>
                                     <span class="px-3 py-1 bg-gradient-to-r from-saipem-primary to-saipem-accent text-white text-sm rounded-full font-bold shadow-sm">
                                         Total: {{ $asset->total }}
@@ -340,6 +341,7 @@
                             </div>
                         </div>
                     </div>
+                    @endif
                 @empty
                     <div class="text-center py-12">
                         <i data-lucide="inbox" class="w-16 h-16 text-gray-300 mx-auto mb-4"></i>

@@ -11,10 +11,10 @@
         @method('PUT')
 
         <div>
-            <label for="employee_id" class="block text-sm font-medium text-gray-700">Employee ID *</label>
-            <input type="text" name="employee_id" id="employee_id" value="{{ old('employee_id', $employee->employee_id) }}" required
-                   class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:border-saipem-accent focus:ring-saipem-accent @error('employee_id') border-red-500 @enderror">
-            @error('employee_id')
+            <label for="ghrs_id" class="block text-sm font-medium text-gray-700">Employee ID *</label>
+            <input type="text" name="ghrs_id" id="ghrs_id" value="{{ old('ghrs_id', $employee->ghrs_id) }}" required
+                   class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:border-saipem-accent focus:ring-saipem-accent @error('ghrs_id') border-red-500 @enderror">
+            @error('ghrs_id')
                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
             @enderror
         </div>

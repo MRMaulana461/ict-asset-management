@@ -2,6 +2,10 @@
 
 @section('title', 'ICT Asset Damage Report')
 
+@push('head')
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+@endpush
+
 @section('content')
 <main class="max-w-5xl mx-auto p-6">
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -53,30 +57,44 @@
             @endif
 
             <div class="bg-white p-8 rounded-xl shadow-lg">
-                <form action="{{ route('withdrawal.store') }}" method="POST" id="withdrawalForm" class="space-y-6">
+                <!-- ✅ FIXED: ID harus 'withdrawalForm' -->
+                <form action="{{ route('withdrawal.store') }}" 
+                      method="POST" 
+                      id="withdrawalForm" 
+                      class="space-y-6">
                     @csrf
 
                     <!-- Employee ID -->
                     <div>
-                        <label for="employee_id" class="block text-sm font-medium text-gray-700">Employee ID *</label>
-                        <input type="text" name="employee_id" id="employee_id" value="{{ old('employee_id') }}"
-                               placeholder="e.g., KAR175458" required
-                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-saipem-accent focus:border-saipem-accent sm:text-sm @error('employee_id') border-red-500 @enderror"/>
-                        @error('employee_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+                        <label for="ghrs_id" class="block text-sm font-medium text-gray-700">Employee ID *</label>
+                        <input type="text" 
+                               name="ghrs_id" 
+                               id="ghrs_id" 
+                               value="{{ old('ghrs_id') }}"
+                               placeholder="e.g., KAR175458" 
+                               required
+                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-saipem-accent focus:border-saipem-accent sm:text-sm @error('ghrs_id') border-red-500 @enderror"/>
+                        @error('ghrs_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                         <p id="employeeError" class="mt-1 text-sm text-red-600 hidden"></p>
                     </div>
 
                     <!-- Employee Name -->
                     <div>
                         <label for="employee_name" class="block text-sm font-medium text-gray-700">Employee Name *</label>
-                        <input type="text" id="employee_name" readonly placeholder="Name will appear automatically"
+                        <input type="text" 
+                               id="employee_name" 
+                               readonly 
+                               placeholder="Name will appear automatically"
                                class="mt-1 block w-full bg-gray-50 border-gray-300 rounded-md shadow-sm sm:text-sm"/>
                     </div>
 
                     <!-- Department -->
                     <div>
                         <label for="employee_dept" class="block text-sm font-medium text-gray-700">Department</label>
-                        <input type="text" id="employee_dept" readonly placeholder="Department will appear automatically"
+                        <input type="text" 
+                               id="employee_dept" 
+                               readonly 
+                               placeholder="Department will appear automatically"
                                class="mt-1 block w-full bg-gray-50 border-gray-300 rounded-md shadow-sm sm:text-sm"/>
                     </div>
 
@@ -88,24 +106,11 @@
                                 required
                                 class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-saipem-accent focus:border-saipem-accent sm:text-sm @error('asset_type_id') border-red-500 @enderror">
                             <option value="">Select Item</option>
-                            @php
-                                $currentCategory = null;
-                            @endphp
                             @foreach($assetTypes as $type)
-                                @if($currentCategory !== $type->category)
-                                    @if($currentCategory !== null)
-                                        </optgroup>
-                                    @endif                                   
-                                @endif
-                                <option value="{{ $type->id }}" 
-                                        data-stock="{{ $type->available_stock }}"
-                                        {{ old('asset_type_id') == $type->id ? 'selected' : '' }}>
+                                <option value="{{ $type->id }}" {{ old('asset_type_id') == $type->id ? 'selected' : '' }}>
                                     {{ $type->name }}
                                 </option>
                             @endforeach
-                            @if($currentCategory !== null)
-                                </optgroup>
-                            @endif
                         </select>
                         @error('asset_type_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                     </div>
@@ -113,7 +118,12 @@
                     <!-- Quantity -->
                     <div>
                         <label for="quantity" class="block text-sm font-medium text-gray-700">Quantity *</label>
-                        <input type="number" name="quantity" id="quantity" value="{{ old('quantity', 1) }}" min="1" required
+                        <input type="number" 
+                               name="quantity" 
+                               id="quantity" 
+                               value="{{ old('quantity', 1) }}" 
+                               min="1" 
+                               required
                                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-saipem-accent focus:border-saipem-accent sm:text-sm @error('quantity') border-red-500 @enderror"/>
                         <p class="mt-1 text-xs text-gray-500">Number of damaged items</p>
                         @error('quantity')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
@@ -122,7 +132,11 @@
                     <!-- Reason -->
                     <div>
                         <label for="reason" class="block text-sm font-medium text-gray-700">Damage Description / Reason *</label>
-                        <textarea name="reason" id="reason" rows="4" required placeholder="Please describe the damage in detail (e.g., Screen broken, Not turning on, Cable damaged...)"
+                        <textarea name="reason" 
+                                  id="reason" 
+                                  rows="4" 
+                                  required 
+                                  placeholder="Please describe the damage in detail (e.g., Screen broken, Not turning on, Cable damaged...)"
                                   class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-saipem-accent focus:border-saipem-accent sm:text-sm @error('reason') border-red-500 @enderror">{{ old('reason') }}</textarea>
                         <p class="mt-1 text-xs text-gray-500">Be as detailed as possible to help ICT team understand the issue</p>
                         @error('reason')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
@@ -130,7 +144,9 @@
 
                     <!-- Submit Button -->
                     <div class="flex justify-end">
-                        <button type="submit" id="submitBtn" disabled
+                        <button type="submit" 
+                                id="submitBtn" 
+                                disabled
                                 class="bg-saipem-primary text-white font-semibold px-6 py-2.5 rounded-lg hover:bg-opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
                             Submit Damage Report
                         </button>
@@ -145,16 +161,7 @@
     @vite(['resources/js/app.js'])
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Tunggu sedikit untuk memastikan semua script sudah loaded
             setTimeout(() => {
-                console.log('ICTAssetApp:', window.ICTAssetApp);
-                
-                if (window.ICTAssetApp && typeof window.ICTAssetApp.initPublicLoanForm === 'function') {
-                    window.ICTAssetApp.initPublicLoanForm();
-                } else {
-                    console.error('initPublicLoanForm not found');
-                }
-                
                 if (window.ICTAssetApp && typeof window.ICTAssetApp.initWithdrawalForm === 'function') {
                     window.ICTAssetApp.initWithdrawalForm();
                 } else {

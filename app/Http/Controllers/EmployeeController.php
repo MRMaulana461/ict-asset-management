@@ -4,10 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Employee;
 use Illuminate\Http\Request;
+use App\Exports\EmployeesExport;
+use Maatwebsite\Excel\Facades\Excel;
 
 class EmployeeController extends Controller
 {
-    
     public function index(Request $request)
     {
         // Base query
@@ -17,9 +18,14 @@ class EmployeeController extends Controller
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
-                $q->where('employee_id', 'like', "%{$search}%")
+                $q->where('ghrs_id', 'like', "%{$search}%")
+                ->orWhere('user_id', 'like', "%{$search}%")
+                ->orWhere('badge_id', 'like', "%{$search}%")
                 ->orWhere('name', 'like', "%{$search}%")
-                ->orWhere('email', 'like', "%{$search}%");
+                ->orWhere('first_name', 'like', "%{$search}%")
+                ->orWhere('last_name', 'like', "%{$search}%")
+                ->orWhere('email', 'like', "%{$search}%")
+                ->orWhere('dept_id', 'like', "%{$search}%");
             });
         }
 
@@ -27,22 +33,25 @@ class EmployeeController extends Controller
             $query->where('is_active', $request->is_active);
         }
 
-        if ($request->filled('department')) {
-            $query->where('department', $request->department);
+        if ($request->filled('dept_id')) {  
+            $query->where('dept_id', $request->dept_id);
+        }
+        
+        if ($request->filled('company')) {
+            $query->where('company', $request->company);
         }
 
         // Get paginated results
-        $employees = $query->orderBy('name')->paginate(20);
+        $employees = $query->orderBy('name')->paginate(10);
 
-        // ===== STATISTICS BASED ON FILTERED QUERY =====
-        // Clone query untuk stats (tanpa pagination)
+        // Statistics based on filtered query
         $statsQuery = clone $query;
         
         $stats = [
             'total' => (clone $statsQuery)->count(),
             'active' => (clone $statsQuery)->where('is_active', true)->count(),
             'inactive' => (clone $statsQuery)->where('is_active', false)->count(),
-            'departments' => (clone $statsQuery)->whereNotNull('department')->distinct('department')->count('department')
+            'departments' => (clone $statsQuery)->whereNotNull('dept_id')->distinct('dept_id')->count('dept_id')  // ✅ UBAH dari 'department' ke 'dept_id'
         ];
 
         return view('employees.index', compact('employees', 'stats'));
@@ -56,19 +65,35 @@ class EmployeeController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'employee_id' => 'required|unique:employees|max:50',
+            'ghrs_id' => 'required|unique:employees|max:50',
+            'comp_empl_id' => 'nullable|max:50',
+            'empl_rcd' => 'nullable|integer',
+            'badge_id' => 'nullable|max:50',
             'user_id' => 'nullable|max:50',
-            'name' => 'required|max:100',
-            'email' => 'required|email|unique:employees|max:100',
+            'first_name' => 'nullable|max:100',
+            'last_name' => 'nullable|max:100',
+            'name' => 'required|max:255',
+            'email' => 'nullable|email|unique:employees|max:100',
+            'company' => 'nullable|max:150',
+            'org_context' => 'nullable|max:150',
             'department' => 'nullable|max:100',
+            'dept_id' => 'nullable|max:20',
+            'org_relation' => 'nullable|max:100',
+            'agency' => 'nullable|max:100',
+            'boc' => 'nullable|max:50',
             'cost_center' => 'nullable|max:50',
+            'cost_center_descr' => 'nullable|max:200',
+            'role_company' => 'nullable|max:100',
+            'employee_class' => 'nullable|in:W,B',
+            'tipo_terzi' => 'nullable|max:50',
+            'contractual_position' => 'nullable|max:150',
             'is_active' => 'boolean'
         ]);
 
         Employee::create($validated);
 
         return redirect()->route('employees.index')
-            ->with('success', 'Employee has been succesfully stored');
+            ->with('success', 'Employee has been successfully stored');
     }
 
     public function show(Employee $employee)
@@ -86,36 +111,52 @@ class EmployeeController extends Controller
     public function update(Request $request, Employee $employee)
     {
         $validated = $request->validate([
-            'employee_id' => 'required|max:50|unique:employees,employee_id,' . $employee->id,
+            'ghrs_id' => 'required|max:50|unique:employees,ghrs_id,' . $employee->id,
+            'comp_empl_id' => 'nullable|max:50',
+            'empl_rcd' => 'nullable|integer',
+            'badge_id' => 'nullable|max:50',
             'user_id' => 'nullable|max:50',
-            'name' => 'required|max:100',
-            'email' => 'required|email|max:100|unique:employees,email,' . $employee->id,
+            'first_name' => 'nullable|max:100',
+            'last_name' => 'nullable|max:100',
+            'name' => 'required|max:255',
+            'email' => 'nullable|email|max:100|unique:employees,email,' . $employee->id,
+            'company' => 'nullable|max:150',
+            'org_context' => 'nullable|max:150',
             'department' => 'nullable|max:100',
+            'dept_id' => 'nullable|max:20',
+            'org_relation' => 'nullable|max:100',
+            'agency' => 'nullable|max:100',
+            'boc' => 'nullable|max:50',
             'cost_center' => 'nullable|max:50',
+            'cost_center_descr' => 'nullable|max:200',
+            'role_company' => 'nullable|max:100',
+            'employee_class' => 'nullable|in:W,B',
+            'tipo_terzi' => 'nullable|max:50',
+            'contractual_position' => 'nullable|max:150',
             'is_active' => 'boolean'
         ]);
 
         $employee->update($validated);
 
         return redirect()->route('employees.index')
-            ->with('success', 'Employee has been succesfully updated');
+            ->with('success', 'Employee has been successfully updated');
     }
     
     public function destroy(Employee $employee)
     {
-        // Ambil semua asset yang di-assign ke employee ini
+        // Get all assets assigned to this employee
         $assignedAssets = $employee->assets;
 
         if ($assignedAssets->count() > 0) {
             foreach ($assignedAssets as $asset) {
-                // Update asset: unassign employee dan set status ke In Stock
+                // Unassign employee and set status to In Stock
                 $asset->update([
                     'assigned_to' => null,
                     'status' => 'In Stock',
                     'assignment_date' => null
                 ]);
 
-                // Update history: set return_date untuk assignment yang masih aktif
+                // Update history: set return_date for active assignments
                 $activeHistory = $asset->assetHistories()
                     ->where('employee_id', $employee->id)
                     ->whereNull('return_date')
@@ -124,16 +165,45 @@ class EmployeeController extends Controller
                 if ($activeHistory) {
                     $activeHistory->update([
                         'return_date' => now(),
-                        'notes' => $activeHistory->notes . ' - Employee deleted, asset returned to stock'
+                        'notes' => ($activeHistory->notes ?? '') . ' - Employee deleted, asset returned to stock'
                     ]);
                 }
             }
         }
 
-        // Hapus employee
+        // Delete employee
         $employee->delete();
 
         return redirect()->route('employees.index')
             ->with('success', 'Employee has been deleted. ' . $assignedAssets->count() . ' asset(s) have been returned to stock.');
+    }
+
+    public function export(Request $request)
+    {
+        $filters = [
+            'search' => $request->search,
+            'is_active' => $request->is_active,
+            'department' => $request->department,
+            'company' => $request->company,
+        ];
+
+        // Generate dynamic filename
+        $filename = 'Employees';
+        
+        if (!empty($request->company)) {
+            $filename .= '_' . str_replace(['/', '\\', '?', '*', '[', ']', ':', ' '], '_', $request->company);
+        }
+        
+        if (!empty($request->department)) {
+            $filename .= '_' . str_replace(['/', '\\', '?', '*', '[', ']', ':', ' '], '_', $request->department);
+        }
+        
+        if ($request->is_active !== null) {
+            $filename .= '_' . ($request->is_active == '1' ? 'Active' : 'Inactive');
+        }
+        
+        $filename .= '_' . date('Y-m-d') . '.xlsx';
+
+        return Excel::download(new EmployeesExport($filters), $filename);
     }
 }

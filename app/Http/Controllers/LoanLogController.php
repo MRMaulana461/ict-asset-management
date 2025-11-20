@@ -12,11 +12,10 @@ use Carbon\Carbon;
 
 class LoanLogController extends Controller
 {
-
     public function index(Request $request)
     {
-        // Base query
-        $query = LoanLog::with(['borrower', 'asset.assetType']);
+        // Base query dengan eager loading yang lebih lengkap
+        $query = LoanLog::with(['borrower', 'asset.assetType', 'assetType']);
 
         // Apply filters
         if ($request->filled('status')) {
@@ -27,7 +26,7 @@ class LoanLogController extends Controller
             $search = $request->search;
             $query->whereHas('borrower', function($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                ->orWhere('employee_id', 'like', "%{$search}%");
+                ->orWhere('ghrs_id', 'like', "%{$search}%");
             });
         }
 
@@ -59,7 +58,7 @@ class LoanLogController extends Controller
             $search = $request->search;
             $statsQuery->whereHas('borrower', function($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                ->orWhere('employee_id', 'like', "%{$search}%");
+                ->orWhere('ghrs_id', 'like', "%{$search}%");
             });
         }
         
@@ -90,12 +89,13 @@ class LoanLogController extends Controller
 
         return view('loan-log.index', compact('loans', 'overdueLoans', 'dueSoonLoans', 'stats'));
     }
+
     /**
      * Get overdue loans (past due date)
      */
     private function getOverdueLoans()
     {
-        return LoanLog::with(['borrower', 'asset.assetType'])
+        return LoanLog::with(['borrower', 'asset.assetType', 'assetType'])
             ->where('status', 'On Loan')
             ->whereRaw('DATE_ADD(loan_date, INTERVAL duration_days DAY) < CURDATE()')
             ->orderBy('loan_date')
@@ -107,43 +107,104 @@ class LoanLogController extends Controller
      */
     private function getDueSoonLoans()
     {
-        return LoanLog::with(['borrower', 'asset.assetType'])
+        return LoanLog::with(['borrower', 'asset.assetType', 'assetType'])
             ->where('status', 'On Loan')
             ->whereRaw('DATE_ADD(loan_date, INTERVAL duration_days DAY) = CURDATE()')
             ->orderBy('loan_date')
             ->get();
     }
-
+     
+    /**
+     * DEFAULT: Show form for loan entry (no stock validation, custom date)
+     */
     public function create()
+    {
+        // Get all asset types (peripheral only)
+        $assetTypes = AssetType::orderBy('name')->get();
+
+        return view('loan-log.create', compact('assetTypes'));
+    }
+
+    /**
+     * DEFAULT: Store loan entry (no stock validation, custom date)
+     */
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'loan_date' => 'required|date|before_or_equal:today',
+            'loan_time' => 'required|date_format:H:i',
+            'ghrs_id' => 'required|string|max:50',
+            'asset_type_id' => 'required|exists:asset_types,id',
+            'quantity' => 'required|integer|min:1',
+            'duration_days' => 'required|integer|min:1|max:365',
+            'purpose' => 'required|string|max:500',
+            'status' => 'required|in:On Loan,Returned',
+            'return_date' => 'nullable|date|after_or_equal:loan_date',
+            'return_time' => 'nullable|date_format:H:i',
+        ]);
+
+        // Find employee by ghrs_id
+        $employee = Employee::where('ghrs_id', $validated['ghrs_id'])->first();
+        
+        if (!$employee) {
+            return back()->withInput()->with('error', 'Employee not found in system.');
+        }
+
+        // Prepare data untuk historical entry
+        $data = [
+            'borrower_id' => $employee->id,
+            'asset_id' => null,  // Null untuk data historis
+            'asset_type_id' => $validated['asset_type_id'],
+            'loan_date' => $validated['loan_date'],
+            'loan_time' => $validated['loan_time'],
+            'quantity' => $validated['quantity'],
+            'duration_days' => $validated['duration_days'],
+            'reason' => $validated['purpose'],
+            'status' => $validated['status'],
+            'return_date' => $validated['return_date'],
+            'return_time' => $validated['return_time'],
+        ];
+
+        // Create loan log
+        LoanLog::create($data);
+
+        return redirect()->route('loan-log.create')
+            ->with('success', 'Loan record added successfully!');
+    }
+
+    /**
+     * NEW LOAN: Show form with stock validation (auto date)
+     */
+    public function createNew()
     {
         $employees = Employee::where('is_active', true)->orderBy('name')->get();
         
         // Get available peripheral assets
         $assets = Asset::with('assetType')
-                ->whereHas('assetType', function($q) {
-                $q->where('category', 'Peripheral');
-            })
-            ->orderBy('asset_tag')
-            ->get();
+                ->orderBy('asset_tag')
+                ->get();
 
-        return view('loan-log.create', compact('employees', 'assets'));
+        return view('loan-log.create-new', compact('employees', 'assets'));
     }
 
-   public function store(Request $request)
+    /**
+     * NEW LOAN: Store with stock validation (auto date)
+     */
+    public function storeNew(Request $request)
     {
         $validated = $request->validate([
-            'employee_id' => 'required|string|exists:employees,employee_id',
+            'ghrs_id' => 'required|string|exists:employees,ghrs_id',
             'asset_id' => 'required|exists:assets,id',
             'quantity' => 'required|integer|min:1',
             'duration_days' => 'required|integer|min:1|max:30',
             'purpose' => 'required|string|max:500'
-            ]);
+        ]);
 
         // Gunakan database transaction untuk mencegah race condition
         return DB::transaction(function () use ($validated, $request) {
             
             // Get employee dengan lock untuk mencegah race condition
-            $employee = Employee::where('employee_id', $validated['employee_id'])
+            $employee = Employee::where('ghrs_id', $validated['ghrs_id'])
                 ->where('is_active', true)
                 ->lockForUpdate()
                 ->first();
@@ -162,9 +223,9 @@ class LoanLogController extends Controller
                 return back()->with('error', 'Asset is not available for loan')->withInput();
             }
 
-            // Set loan date dan time otomatis seperti public form
-            $loanDate = Carbon::today(); // Tanggal hari ini
-            $loanTime = now()->format('H:i:s'); // Waktu sekarang
+            // Set loan date dan time otomatis
+            $loanDate = Carbon::today();
+            $loanTime = now()->format('H:i:s');
             $durationDays = (int) $validated['duration_days'];
             $returnDate = $loanDate->copy()->addDays($durationDays);
 
@@ -172,9 +233,9 @@ class LoanLogController extends Controller
             $loanLog = LoanLog::create([
                 'borrower_id' => $employee->id,
                 'asset_id' => $validated['asset_id'],
-                'asset_type_id' => $asset->asset_type_id,
-                'loan_date' => $loanDate, // Otomatis: hari ini
-                'loan_time' => $loanTime, // Otomatis: waktu sekarang
+                'asset_type_id' => $asset->asset_type_id, // Ambil dari asset
+                'loan_date' => $loanDate,
+                'loan_time' => $loanTime,
                 'quantity' => $validated['quantity'],
                 'duration_days' => $durationDays,
                 'return_date' => null,
@@ -197,7 +258,8 @@ class LoanLogController extends Controller
 
     public function show(LoanLog $loanLog)
     {
-        $loanLog->load(['borrower', 'asset.assetType']);
+        // Eager load dengan assetType langsung
+        $loanLog->load(['borrower', 'asset.assetType', 'assetType']);
         return view('loan-log.show', compact('loanLog'));
     }
 
@@ -208,6 +270,9 @@ class LoanLogController extends Controller
             return redirect()->route('loan-log.index')
                 ->with('error', 'Cannot extend loan for returned assets');
         }
+
+        // Load relationships
+        $loanLog->load(['borrower', 'asset.assetType', 'assetType']);
 
         $overdueLoans = $this->getOverdueLoans();
         $dueSoonLoans = $this->getDueSoonLoans();
@@ -245,23 +310,20 @@ class LoanLogController extends Controller
 
     public function returnAsset(Request $request, $id)
     {
-        // Cari loan log secara manual
         $loanLog = LoanLog::findOrFail($id);
 
-        // Only allow return if status is "On Loan"
         if ($loanLog->status !== 'On Loan') {
             return redirect()->route('loan-log.index')
                 ->with('error', 'This loan has already been returned');
         }
 
-        // Update loan log
         $loanLog->update([
             'return_date' => now()->format('Y-m-d'),
             'return_time' => now()->format('H:i:s'),
             'status' => 'Returned'
         ]);
 
-        // Update asset status back to "In Stock"
+        // Update asset status hanya jika ada asset_id (bukan data historis)
         if ($loanLog->asset_id) {
             Asset::where('id', $loanLog->asset_id)->update([
                 'status' => 'In Stock',
@@ -277,7 +339,6 @@ class LoanLogController extends Controller
 
     public function destroy(LoanLog $loanLog)
     {
-        // Only allow deletion if status is "Returned"
         if ($loanLog->status !== 'Returned') {
             return back()->with('error', 'Cannot delete active loan. Please mark as returned first.');
         }

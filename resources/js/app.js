@@ -15,6 +15,7 @@ let initLoanLogIndex = fallbackFn;
 let initWithdrawalIndex = fallbackFn;
 let initActivitiesDetail = fallbackFn;
 let initDashboardPanel = fallbackFn;
+let initLoanForm = fallbackFn;  // ✅ Ganti nama
 
 // Load all modules
 Promise.all([
@@ -66,29 +67,40 @@ Promise.all([
     }).catch(error => {
         console.error('❌ Failed to load asset-type-detail:', error);
     }),
+    
     import('./pages/loan-log-index.js').then(module => {
         initLoanLogIndex = module.initLoanLogIndex || fallbackFn;
         console.log('✅ Loan Log module loaded');
     }).catch(error => {
         console.error('❌ Failed to load Loan Log:', error);
     }),
+    
     import('./pages/withdrawal-index.js').then(module => {
         initWithdrawalIndex = module.initWithdrawalIndex || fallbackFn;
         console.log('✅ Withdrawal Index module loaded');
     }).catch(error => {
         console.error('❌ Failed to load Withdrawal Index:', error);
     }),
+    
     import('./pages/activity-detail.js').then(module => {
         initActivitiesDetail = module.initActivitiesDetail || fallbackFn;
         console.log('✅ Activity Detail module loaded');
     }).catch(error => {
         console.error('❌ Failed to load Activity Detail:', error);
     }),
+    
     import('./pages/dashboard-panel.js').then(module => {
         initDashboardPanel = module.initDashboardPanel || fallbackFn;
         console.log('✅ Dashboard Panel module loaded');
     }).catch(error => {
         console.error('❌ Failed to load Dashboard Panel:', error);
+    }),
+    
+    import('./pages/loan-form.js').then(module => {
+        initLoanForm = module.initLoanForm || fallbackFn;
+        console.log('✅ Loan Form module loaded');
+    }).catch(error => {
+        console.error('❌ Failed to load Loan Form:', error);
     }),
 ]).then(() => {
     window.Alpine = Alpine;
@@ -105,7 +117,8 @@ Promise.all([
         initWithdrawalIndex,
         initLoanLogIndex, 
         initActivitiesDetail,
-        initDashboardPanel
+        initDashboardPanel,
+        initLoanForm  
     };
 
     console.log('🚀 ICT Asset Management App loaded successfully');

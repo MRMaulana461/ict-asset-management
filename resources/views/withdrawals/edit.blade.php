@@ -46,25 +46,25 @@
 
                 <!-- Employee Selection -->
                 <div>
-                    <label for="employee_id" class="block text-sm font-medium text-gray-700 mb-2">
+                    <label for="ghrs_id" class="block text-sm font-medium text-gray-700 mb-2">
                         Employee <span class="text-red-500">*</span>
                     </label>
-                    <select name="employee_id" 
-                            id="employee_id" 
+                    <select name="ghrs_id" 
+                            id="ghrs_id" 
                             required
-                            class="w-full border-gray-300 rounded-md shadow-sm focus:ring-saipem-accent focus:border-saipem-accent @error('employee_id') border-red-500 @enderror">
+                            class="w-full border-gray-300 rounded-md shadow-sm focus:ring-saipem-accent focus:border-saipem-accent @error('ghrs_id') border-red-500 @enderror">
                         <option value="">-- Select Employee --</option>
                         @foreach($employees as $employee)
                             <option value="{{ $employee->id }}" 
-                                    {{ old('employee_id', $withdrawal->employee_id) == $employee->id ? 'selected' : '' }}>
-                                {{ $employee->employee_id }} - {{ $employee->name }} 
+                                    {{ old('ghrs_id', $withdrawal->ghrs_id) == $employee->id ? 'selected' : '' }}>
+                                {{ $employee->ghrs_id }} - {{ $employee->name }} 
                                 @if($employee->department)
                                     ({{ $employee->department }})
                                 @endif
                             </option>
                         @endforeach
                     </select>
-                    @error('employee_id')
+                    @error('ghrs_id')
                         <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                     @enderror
                     <p class="mt-1 text-xs text-gray-500">Select the employee who reported the damage</p>
@@ -78,7 +78,7 @@
                             <span class="font-medium">Name:</span> {{ $withdrawal->employee->name }}
                         </div>
                         <div>
-                            <span class="font-medium">ID:</span> {{ $withdrawal->employee->employee_id }}
+                            <span class="font-medium">ID:</span> {{ $withdrawal->employee->ghrs_id }}
                         </div>
                         <div>
                             <span class="font-medium">Department:</span> {{ $withdrawal->employee->department ?? '-' }}

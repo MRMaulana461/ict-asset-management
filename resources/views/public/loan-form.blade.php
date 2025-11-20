@@ -61,17 +61,17 @@
 
                     <!-- Employee ID -->
                     <div>
-                        <label for="employee_id" class="block text-sm font-medium text-gray-700">
+                        <label for="ghrs_id" class="block text-sm font-medium text-gray-700">
                             Employee ID *
                         </label>
                         <input type="text" 
-                               name="employee_id" 
-                               id="employee_id" 
-                               value="{{ old('employee_id') }}"
-                               placeholder="Enter your Employee ID (e.g., KAR175458)"
-                               required
-                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-saipem-accent focus:border-saipem-accent sm:text-sm @error('employee_id') border-red-500 @enderror"/>
-                        @error('employee_id')
+                            name="employee_id"  ← UBAH INI (bukan ghrs_id)
+                            id="ghrs_id" 
+                            value="{{ old('employee_id') }}"  ← DAN INI
+                            placeholder="Enter your Employee ID (e.g., KAR175458)"
+                            required
+                            class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-saipem-accent focus:border-saipem-accent sm:text-sm @error('employee_id') border-red-500 @enderror"/>
+                        @error('employee_id')  ← DAN INI
                             <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                         @enderror
                         <p id="employeeError" class="mt-1 text-sm text-red-600 hidden"></p>
@@ -166,12 +166,15 @@
                             Purpose / Reason for Borrowing *
                         </label>
                         <textarea name="purpose" 
-                                  id="purpose" 
-                                  rows="3"
-                                  required
-                                  placeholder="e.g., Project presentation, Client meeting, Testing purposes..."
-                                  class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-saipem-accent focus:border-saipem-accent sm:text-sm @error('purpose') border-red-500 @enderror">{{ old('purpose') }}</textarea>
-                        <p class="mt-1 text-xs text-gray-500">Please explain why you need to borrow this item</p>
+                                id="purpose" 
+                                rows="3"
+                                required
+                                placeholder="e.g., Project presentation, Client meeting, Testing purposes... (minimum 10 characters)"
+                                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-saipem-accent focus:border-saipem-accent sm:text-sm @error('purpose') border-red-500 @enderror">{{ old('purpose') }}</textarea>
+                        <div class="flex justify-between items-center mt-1">
+                            <p class="text-xs text-gray-500">Minimum 10 characters</p>
+                            <p class="text-xs text-gray-500" id="purposeCounter">0/500</p>
+                        </div>
                         @error('purpose')
                             <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                         @enderror
@@ -207,26 +210,31 @@
 </main>
 
 @push('scripts')
-    @vite(['resources/js/app.js'])
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Tunggu sedikit untuk memastikan semua script sudah loaded
-            setTimeout(() => {
-                console.log('ICTAssetApp:', window.ICTAssetApp);
-                
-                if (window.ICTAssetApp && typeof window.ICTAssetApp.initPublicLoanForm === 'function') {
-                    window.ICTAssetApp.initPublicLoanForm();
-                } else {
-                    console.error('initPublicLoanForm not found');
-                }
-                
-                if (window.ICTAssetApp && typeof window.ICTAssetApp.initWithdrawalForm === 'function') {
-                    window.ICTAssetApp.initWithdrawalForm();
-                } else {
-                    console.error('initWithdrawalForm not found');
-                }
-            }, 100);
-        });
-    </script>
+<script>
+console.log('📄 Public Loan Form page script loaded');
+
+function waitForApp() {
+    if (!window.ICTAssetApp) {
+        console.log('⏳ Waiting for ICTAssetApp...');
+        setTimeout(waitForApp, 100);
+        return;
+    }
+    
+    if (typeof window.ICTAssetApp.initPublicLoanForm !== 'function') {
+        console.error('❌ initPublicLoanForm not found');
+        console.log('Available:', Object.keys(window.ICTAssetApp));
+        return;
+    }
+    
+    console.log('✅ Calling initPublicLoanForm()');
+    window.ICTAssetApp.initPublicLoanForm();
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', waitForApp);
+} else {
+    waitForApp();
+}
+</script>
 @endpush
 @endsection

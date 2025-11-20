@@ -124,7 +124,7 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-500 mb-1">Employee ID</label>
-                    <p class="text-gray-900 font-semibold">{{ $loanLog->borrower->employee_id }}</p>
+                    <p class="text-gray-900 font-semibold">{{ $loanLog->borrower->ghrs_id }}</p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-500 mb-1">Department</label>
@@ -137,7 +137,6 @@
                         {{ $loanLog->borrower->email }}
                     </a>
                 </div>
-                @endif
             </div>
         </div>
 
@@ -152,16 +151,11 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <label class="block text-sm font-medium text-gray-500 mb-1">Asset Type</label>
-                    <p class="text-gray-900 font-semibold">{{ $loanLog->asset->assetType->name }}</p>
+                    <p class="text-gray-900 font-semibold">{{ $loanLog->asset?->assetType?->name ?? '-' }}</p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-500 mb-1">Asset Tag</label>
-                    <p class="text-gray-900 font-semibold">{{ $loanLog->asset->asset_tag }}</p>
-                </div>
-                @if($loanLog->asset->serial_number)
-                <div>
-                    <label class="block text-sm font-medium text-gray-500 mb-1">Serial Number</label>
-                    <p class="text-gray-900 font-semibold">{{ $loanLog->asset->serial_number }}</p>
+                    <p class="text-gray-900 font-semibold">{{ $loanLog->asset?->asset_tag ?? '-' }}</p>
                 </div>
                 @endif
                 <div>

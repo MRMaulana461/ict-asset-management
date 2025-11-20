@@ -23,22 +23,23 @@ class WithdrawalController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'employee_id' => 'required|string|max:50',
+            'ghrs_id' => 'required|string|max:50',  // ✅ Ubah dari employee_id ke ghrs_id
             'asset_type_id' => 'required|exists:asset_types,id',
             'quantity' => 'required|integer|min:1',
             'reason' => 'required|string|max:1000',
         ]);
 
-        // Find employee by employee_id code
-        $employee = Employee::where('employee_id', $validated['employee_id'])->first();
+        // ✅ Find employee by ghrs_id
+        $employee = Employee::where('ghrs_id', $validated['ghrs_id'])->first();
         
         if (!$employee) {
             return back()->withInput()->with('error', 'Employee not found in system.');
         }
 
-        // Set today's date and replace employee_id string with numeric id
+        // ✅ Set today's date and replace ghrs_id with numeric employee_id
         $validated['date'] = now()->toDateString();
         $validated['employee_id'] = $employee->id;
+        unset($validated['ghrs_id']);  // Remove ghrs_id from array
 
         Withdrawal::create($validated);
 
@@ -80,7 +81,7 @@ class WithdrawalController extends Controller
             $query->where('asset_type_id', $request->asset_type);
         }
         
-        $withdrawals = $query->latest('date')->paginate(15);
+        $withdrawals = $query->latest('date')->paginate(10);
         
         // Statistics based on filtered query
         $statsQuery = Withdrawal::query();
@@ -159,21 +160,22 @@ class WithdrawalController extends Controller
     {
         $validated = $request->validate([
             'date' => 'required|date|before_or_equal:today',
-            'employee_id' => 'required|string|max:50',
+            'ghrs_id' => 'required|string|max:50',  // ✅ Ubah menjadi 'ghrs_id'
             'asset_type_id' => 'required|exists:asset_types,id',
             'quantity' => 'required|integer|min:1',
             'reason' => 'required|string|max:1000',
         ]);
 
-        // Find employee by employee_id code (same as public form)
-        $employee = Employee::where('employee_id', $validated['employee_id'])->first();
+        // Find employee by ghrs_id code
+        $employee = Employee::where('ghrs_id', $validated['ghrs_id'])->first();  // ✅ Ubah key
         
         if (!$employee) {
             return back()->withInput()->with('error', 'Employee not found in system.');
         }
 
-        // Replace employee_id string with numeric id
+        // Set employee_id (numeric) dan hapus ghrs_id dari array
         $validated['employee_id'] = $employee->id;
+        unset($validated['ghrs_id']);  // ✅ Hapus ghrs_id dari validated data
 
         Withdrawal::create($validated);
 

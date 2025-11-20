@@ -1,21 +1,66 @@
-*.log
-.DS_Store
+# -----------------------------------------
+# ENVIRONMENT FILES (SENSITIVE)
+# -----------------------------------------
+.env
+.env.*
 .env.backup
 .env.production
-.phpactor.json
-.phpunit.result.cache
-/.fleet
-/.idea
-/.nova
-/.phpunit.cache
-/.vscode
-/.zed
-/auth.json
+
+# -----------------------------------------
+# LARAVEL DIRECTORIES
+# -----------------------------------------
+/vendor/
+/node_modules/
+
+# Storage (only keep public)
+storage/*
+!storage/app/
+!storage/app/public/
+storage/*.key
+storage/pail
+storage/logs/*
+storage/framework/*
+
+# Bootstrap cache
+/bootstrap/cache/*.php
+!bootstrap/cache/packages.php
+!bootstrap/cache/services.php
+
+# -----------------------------------------
+# PUBLIC BUILD (Vite)
+# -----------------------------------------
 /public/build
 /public/hot
 /public/storage
-/storage/*.key
-/storage/pail
-Homestead.json
-Homestead.yaml
+
+# -----------------------------------------
+# IDE / EDITOR FOLDERS
+# -----------------------------------------
+/.phpunit.result.cache
+/.phpunit.cache
+.phpactor.json
+
+/.idea
+/.vscode
+/.fleet
+/.nova
+/.zed
+
+# -----------------------------------------
+# SYSTEM & OS FILES
+# -----------------------------------------
+*.log
+.DS_Store
 Thumbs.db
+
+# -----------------------------------------
+# COMPOSER / AUTH
+# -----------------------------------------
+auth.json
+
+# -----------------------------------------
+# BACKUPS / TEMP FILES
+# -----------------------------------------
+*.bak
+*.backup
+*.tmp

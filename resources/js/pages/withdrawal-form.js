@@ -5,7 +5,7 @@ export function initWithdrawalForm() {
 
     // ===== EMPLOYEE VALIDATOR =====
     const employeeValidator = new EmployeeValidator({
-        employeeIdField: document.getElementById('employee_id'),
+        employeeIdField: document.getElementById('ghrs_id'),
         employeeNameField: document.getElementById('employee_name'),
         employeeDeptField: document.getElementById('employee_dept'),
         employeeErrorField: document.getElementById('employeeError')
@@ -15,7 +15,7 @@ export function initWithdrawalForm() {
     // ===== SIMPLE FORM VALIDATION =====
     // Enable/disable submit button based on form validity
     const checkFormValidity = () => {
-        const employeeId = document.getElementById('employee_id')?.value.trim();
+        const employeeId = document.getElementById('ghrs_id')?.value.trim();
         const employeeName = document.getElementById('employee_name')?.value.trim();
         const assetType = document.getElementById('asset_type_id')?.value;
         const quantity = parseInt(document.getElementById('quantity')?.value) || 0;
@@ -49,7 +49,7 @@ export function initWithdrawalForm() {
 
     // ===== ATTACH EVENT LISTENERS =====
     const fields = [
-        'employee_id', 
+        'ghrs_id', 
         'employee_name', 
         'asset_type_id', 
         'quantity', 
@@ -75,7 +75,7 @@ export function initWithdrawalForm() {
     }, 500);
 
     // ===== FORM SUBMIT HANDLER =====
-    const form = document.getElementById('withdrawalForm');
+    const form = document.getElementById('manualWithdrawalForm');
     
     if (form) {
         form.addEventListener('submit', function(e) {

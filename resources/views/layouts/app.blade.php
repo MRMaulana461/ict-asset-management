@@ -43,6 +43,7 @@
                        class="text-white hover:text-saipem-accent transition {{ request()->routeIs('dashboard') ? 'font-semibold border-b-2 border-saipem-accent' : '' }}">
                         Dashboard
                     </a>
+                    
                     <a href="{{ route('employees.index') }}" 
                        class="text-white hover:text-saipem-accent transition {{ request()->routeIs('employees.*') ? 'font-semibold border-b-2 border-saipem-accent' : '' }}">
                         Employee

@@ -88,7 +88,7 @@
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Search</label>
                     <input type="text" name="search" value="{{ request('search') }}" 
-                           placeholder="Asset tag, borrower..."
+                           placeholder="Asset type, borrower..."
                            class="w-full border-gray-300 rounded-lg focus:ring-2 focus:ring-saipem-primary focus:border-saipem-primary transition-all py-2.5">
                 </div>
 
@@ -198,7 +198,7 @@
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-lg font-semibold text-gray-800 flex items-center">
                     <i data-lucide="bar-chart-3" class="w-5 h-5 mr-2 text-saipem-primary"></i>
-                    Top Borrowed Asset Types
+                    Top Borrowed Items
                 </h2>
                 <span class="text-sm text-gray-500 bg-gray-50 px-3 py-1 rounded-full">
                     Top 10
@@ -209,93 +209,6 @@
             </div>
         </div>
 
-        <!-- Loans Table -->
-        <div class="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
-            <div class="p-4 sm:p-6 border-b border-gray-200">
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <h2 class="text-lg sm:text-xl font-semibold text-gray-800 flex items-center">
-                        <i data-lucide="table" class="w-5 h-5 mr-2 text-saipem-primary"></i>
-                        Loan Records
-                    </h2>
-                    <span class="text-sm text-gray-600 bg-gray-50 px-3 py-1 rounded-full">{{ $loans->total() }} records found</span>
-                </div>
-            </div>
-
-            <div class="overflow-x-auto">
-                <table class="w-full min-w-full">
-                    <thead class="bg-gray-50 border-b border-gray-200">
-                        <tr>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Asset</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Borrower</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Department</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Loan Date</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Duration</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Return Date</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
-                        @forelse($loans as $loan)
-                        <tr class="hover:bg-gray-50 transition-colors">
-                            <td class="px-4 py-4">
-                                <div class="text-sm font-medium text-gray-900">{{ $loan->asset->assetType->name ?? 'N/A' }}</div>
-                                <div class="text-xs text-gray-500">{{ $loan->asset->asset_tag ?? 'N/A' }}</div>
-                            </td>
-                            <td class="px-4 py-4">
-                                <div class="text-sm font-medium text-gray-900">{{ $loan->borrower->name ?? 'N/A' }}</div>
-                                <div class="text-xs text-gray-500">{{ $loan->borrower->employee_id ?? 'N/A' }}</div>
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap hidden sm:table-cell">
-                                <span class="text-sm text-gray-600">{{ $loan->borrower->department ?? 'N/A' }}</span>
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap">
-                                <span class="text-sm text-gray-900">{{ \Carbon\Carbon::parse($loan->loan_date)->format('d M Y') }}</span>
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap hidden md:table-cell">
-                                <span class="text-sm text-gray-900">{{ $loan->duration_days }} days</span>
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap">
-                                @if($loan->return_date)
-                                    <span class="text-sm text-gray-900">{{ \Carbon\Carbon::parse($loan->return_date)->format('d M Y') }}</span>
-                                @else
-                                    <span class="text-sm text-gray-400">Not returned</span>
-                                @endif
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap">
-                                @if($loan->status == 'On Loan')
-                                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">On Loan</span>
-                                @else
-                                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Returned</span>
-                                @endif
-                            </td>
-                        </tr>
-                        @empty
-                        <tr>
-                            <td colspan="7" class="px-6 py-12 text-center">
-                                <i data-lucide="inbox" class="w-12 h-12 text-gray-300 mx-auto mb-3"></i>
-                                <p class="text-gray-500 text-lg">No loan records found</p>
-                                @if(request()->hasAny(['status', 'date_from', 'date_to', 'search']))
-                                <a href="{{ route('dashboard.loans.borrowed') }}" class="text-saipem-primary hover:text-saipem-accent text-sm mt-2 inline-block">
-                                    Clear filters to see all loans
-                                </a>
-                                @endif
-                            </td>
-                        </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Pagination -->
-            @if($loans->hasPages())
-            <div class="px-4 sm:px-6 py-4 border-t border-gray-200">
-                {{ $loans->onEachSide(1)->links() }}
-            </div>
-            @endif
-        </div>
-    </div>
-</div>
-
 @endsection
 
 @push('scripts')
@@ -303,60 +216,87 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const ctx = document.getElementById('borrowedChart');
+    
+    // Debug: Log chart data
+    const chartLabels = {!! json_encode($chartData['labels'] ?? []) !!};
+    const chartValues = {!! json_encode($chartData['data'] ?? []) !!};
+    
+    console.log('📊 Chart Debug Info:');
+    console.log('Labels:', chartLabels);
+    console.log('Data:', chartValues);
+    console.log('Labels length:', chartLabels.length);
+    console.log('Data length:', chartValues.length);
+    
     if (ctx) {
-        new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: {!! json_encode($chartData['labels']) !!},
-                datasets: [{
-                    label: 'Times Borrowed',
-                    data: {!! json_encode($chartData['data']) !!},
-                    backgroundColor: '#0033A0',
-                    borderRadius: 6,
-                    barThickness: 60
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return 'Borrowed ' + context.parsed.y + ' times';
-                            }
-                        }
-                    }
+        // Check if data exists
+        if (chartLabels.length === 0 || chartValues.length === 0) {
+            console.warn('⚠️ No chart data available');
+            // Show "No data" message
+            const chartContainer = ctx.parentElement;
+            chartContainer.innerHTML = '<div class="flex items-center justify-center h-64 text-gray-400"><div class="text-center"><i data-lucide="bar-chart-3" class="w-12 h-12 mx-auto mb-2 opacity-50"></i><p>No borrowing data available</p></div></div>';
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        } else {
+            console.log('✅ Creating chart with data');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: chartLabels,
+                    datasets: [{
+                        label: 'Times Borrowed',
+                        data: chartValues,
+                        backgroundColor: '#0033A0',
+                        borderRadius: 6,
+                        barThickness: 60
+                    }]
                 },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            stepSize: 1
-                        },
-                        grid: {
-                            display: true,
-                            color: 'rgba(0, 0, 0, 0.05)'
-                        }
-                    },
-                    x: {
-                        grid: {
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
                             display: false
                         },
-                        ticks: {
-                            maxRotation: 45,
-                            minRotation: 45,
-                            font: {
-                                size: 11
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return 'Borrowed ' + context.parsed.y + ' times';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1,
+                                precision: 0
+                            },
+                            grid: {
+                                display: true,
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45,
+                                font: {
+                                    size: 11
+                                }
                             }
                         }
                     }
                 }
-            }
-        });
+            });
+            console.log('✅ Chart created successfully');
+        }
+    } else {
+        console.error('❌ Canvas element #borrowedChart not found');
     }
 });
 </script>

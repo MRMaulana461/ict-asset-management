@@ -90,7 +90,7 @@
                             $dueDate = \App\Helpers\DateHelper::addBusinessDays($loan->loan_date, $loan->duration_days);
                         @endphp
                         <div class="text-xs text-red-600 bg-red-50 rounded px-2 py-1">
-                            <strong>{{ $loan->borrower->name }}</strong> - {{ $loan->asset->assetType->name }}
+                            <strong>{{ $loan->borrower?->name ?? '-' }}</strong> - {{ $loan->assetType?->name ?? $loan->asset?->assetType?->name ?? 'Unknown Asset' }}
                         </div>
                     @endforeach
                     @if($overdueLoans->count() > 2)
@@ -124,7 +124,7 @@
                 <div class="space-y-1 max-h-32 overflow-y-auto">
                     @foreach($dueSoonLoans->take(2) as $loan)
                     <div class="text-xs text-yellow-600 bg-yellow-50 rounded px-2 py-1">
-                        <strong>{{ $loan->borrower->name }}</strong> - {{ $loan->asset->assetType->name }}
+                        <strong>{{ $loan->borrower->name }}</strong> - {{ $loan->assetType?->name ?? $loan->asset->assetType->name }}
                     </div>
                     @endforeach
                     @if($dueSoonLoans->count() > 2)
@@ -264,7 +264,6 @@
                         <tr>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Loan Date</th>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Borrower</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">Asset</th>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Duration</th>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -287,12 +286,9 @@
                                     <div class="flex items-center">
                                         <div class="ml-2">
                                             <div class="text-sm font-medium text-gray-900">{{ $loan->borrower->name }}</div>
-                                            <div class="text-xs text-gray-500">{{ $loan->borrower->employee_id }}</div>
+                                            <div class="text-xs text-gray-500">{{ $loan->borrower->ghrs_id }}</div>
                                         </div>
                                     </div>
-                                </td>
-                                <td class="px-4 py-4 whitespace-nowrap hidden lg:table-cell">
-                                    <div class="text-sm font-medium text-gray-900">{{ $loan->asset->assetType->name }}</div>
                                 </td>
                                 <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600 hidden sm:table-cell">
                                     {{ $loan->duration_days }} days
@@ -338,7 +334,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="px-6 py-12 text-center">
+                                <td colspan="8" class="px-6 py-12 text-center">
                                     <i data-lucide="inbox" class="w-12 h-12 text-gray-300 mx-auto mb-3"></i>
                                     <p class="text-gray-500 text-lg">No loan records found</p>
                                     @if(request()->hasAny(['search', 'status', 'time_filter']))

@@ -30,17 +30,25 @@ class PublicLoanController extends Controller
         return view('public.loan-form', compact('assetTypes'));
     }
 
-    // API endpoint untuk autocomplete employee
+    // API endpoint untuk autocomplete employee (mendukung ghrs_id, user_id, badge_id)
     public function getEmployee($employeeId)
     {
-        $employee = Employee::where('employee_id', $employeeId)
-            ->where('is_active', true)
+        // Cari employee berdasarkan ghrs_id, user_id, atau badge_id
+        $employee = Employee::where('is_active', true)
+            ->where(function($query) use ($employeeId) {
+                $query->where('ghrs_id', $employeeId)
+                      ->orWhere('user_id', $employeeId)
+                      ->orWhere('badge_id', $employeeId);
+            })
             ->first();
 
         if ($employee) {
             return response()->json([
                 'success' => true,
                 'data' => [
+                    'ghrs_id' => $employee->ghrs_id,
+                    'user_id' => $employee->user_id ?? '-',
+                    'badge_id' => $employee->badge_id ?? '-',
                     'name' => $employee->name,
                     'email' => $employee->email,
                     'department' => $employee->department
@@ -82,24 +90,30 @@ class PublicLoanController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'employee_id' => 'required|exists:employees,employee_id',
+            'employee_id' => 'required|string', 
             'asset_type_id' => 'required|exists:asset_types,id',
-            'duration_days' => 'required|integer|min:1|max:30',
+            'duration_days' => 'required|integer|min:1|max:7',
             'quantity' => 'required|integer|min:1',
-            'purpose' => 'required|string|max:500'
+            'purpose' => 'required|string|min:1|max:500' 
+        ], [
+            'duration_days.max' => 'Maximum loan duration is 7 days',
         ]);
 
-        // Gunakan database transaction untuk mencegah race condition
-        return DB::transaction(function () use ($validated, $request) {
+        return DB::transaction(function () use ($validated) {
             
-            // Get employee dengan lock untuk mencegah race condition
-            $employee = Employee::where('employee_id', $validated['employee_id'])
-                ->where('is_active', true)
+            $employee = Employee::where('is_active', true)
+                ->where(function($query) use ($validated) {
+                    $query->where('ghrs_id', $validated['employee_id'])
+                        ->orWhere('user_id', $validated['employee_id'])
+                        ->orWhere('badge_id', $validated['employee_id']);
+                })
                 ->lockForUpdate()
                 ->first();
 
             if (!$employee) {
-                return back()->with('error', 'Employee not found or inactive')->withInput();
+                return back()
+                    ->with('error', 'Employee not found or inactive. Please check your Employee ID.')
+                    ->withInput();
             }
 
             // Get asset type
@@ -150,7 +164,7 @@ class PublicLoanController extends Controller
                     'reason' => $validated['purpose']
                 ]);
 
-                // UPDATE STATUS ASSET menjadi "Taken"
+                // UPDATE STATUS ASSET menjadi "In Use"
                 $asset->update([
                     'status' => 'In Use',
                     'assigned_to' => $employee->id,

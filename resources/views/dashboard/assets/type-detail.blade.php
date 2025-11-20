@@ -37,7 +37,7 @@
             </h1>
             <p class="text-gray-600 mt-1">Category: <span class="font-semibold">{{ $assetType->category }}</span></p>
             
-            @if(request()->hasAny(['status', 'search']))
+            @if(request()->hasAny(['status', 'search', 'brand']))
             <div class="flex flex-wrap gap-2 mt-3">
                 <span class="text-xs text-gray-500 flex items-center">
                     <i data-lucide="filter" class="w-3 h-3 mr-1"></i>
@@ -46,6 +46,11 @@
                 @if(request('status') && request('status') != 'all')
                 <span class="px-3 py-1 bg-saipem-primary/10 text-saipem-primary text-xs rounded-full font-medium border border-saipem-primary/20">
                     Status: {{ request('status') }}
+                </span>
+                @endif
+                @if(request('brand'))
+                <span class="px-3 py-1 bg-saipem-primary/10 text-saipem-primary text-xs rounded-full font-medium border border-saipem-primary/20">
+                    Brand: {{ request('brand') }}
                 </span>
                 @endif
                 @if(request('search'))
@@ -96,13 +101,24 @@
                     </select>
                 </div>
 
+                <!-- Brand Filter -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Brand</label>
+                    <select name="brand" class="w-full border-gray-300 rounded-lg focus:ring-2 focus:ring-saipem-primary focus:border-saipem-primary transition-all py-2.5">
+                        <option value="">All Brands</option>
+                        @foreach($availableBrands ?? [] as $brand)
+                        <option value="{{ $brand }}" {{ request('brand') == $brand ? 'selected' : '' }}>{{ $brand }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
                 <!-- Search -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Search</label>
                     <input type="text" 
                            name="search" 
                            value="{{ request('search') }}" 
-                           placeholder="Asset tag, serial..."
+                           placeholder="PO, Item, Serial..."
                            class="w-full border-gray-300 rounded-lg focus:ring-2 focus:ring-saipem-primary focus:border-saipem-primary transition-all py-2.5">
                 </div>
 
@@ -116,7 +132,7 @@
                 </div>
 
                 <!-- Clear Filters -->
-                @if(request()->hasAny(['status', 'search']))
+                @if(request()->hasAny(['status', 'search', 'brand']))
                 <div class="pt-4 border-t border-gray-200">
                     <a href="{{ route('dashboard.assets.type.detail', $assetType->id) }}" 
                        class="text-sm text-saipem-primary hover:text-saipem-accent flex items-center justify-center">
@@ -168,91 +184,48 @@
             </div>
         </div>
 
-        <!-- Assets Table -->
-        <div class="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
-            <div class="p-4 sm:p-6 border-b border-gray-200">
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <h2 class="text-lg sm:text-xl font-semibold text-gray-800 flex items-center">
-                        <i data-lucide="table" class="w-5 h-5 mr-2 text-saipem-primary"></i>
-                        Asset List
-                    </h2>
-                    <span class="text-sm text-gray-600 bg-gray-50 px-3 py-1 rounded-full">
-                        {{ $assets->total() }} assets found
-                    </span>
+        <!-- Additional Info Section -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Top Brands -->
+            @if(isset($topBrands) && $topBrands->count() > 0)
+            <div class="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                    <i data-lucide="award" class="w-5 h-5 mr-2 text-saipem-primary"></i>
+                    Top Brands
+                </h3>
+                <div class="space-y-3">
+                    @foreach($topBrands as $brand)
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-gray-700">{{ $brand->brand ?? 'Unknown' }}</span>
+                        <span class="px-2.5 py-1 bg-saipem-primary/10 text-saipem-primary text-xs font-semibold rounded-full">
+                            {{ $brand->total }}
+                        </span>
+                    </div>
+                    @endforeach
                 </div>
             </div>
+            @endif
 
-            <div class="overflow-x-auto">
-                <table class="w-full min-w-full">
-                    <thead class="bg-gray-50 border-b border-gray-200">
-                        <tr>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Asset Tag</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">Serial Number</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Department</th>
-                        </tr>
-                    </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
-                        @forelse($assets as $asset)
-                        <tr class="hover:bg-gray-50 transition-colors">
-                            <td class="px-4 py-4 whitespace-nowrap">
-                                <span class="text-sm font-medium text-gray-900">{{ $asset->asset_tag }}</span>
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap hidden lg:table-cell">
-                                <span class="text-sm text-gray-600">{{ $asset->serial_number ?? 'N/A' }}</span>
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap">
-                                @php
-                                    $statusColors = [
-                                        'In Stock' => 'bg-blue-100 text-blue-800',
-                                        'In Use' => 'bg-green-100 text-green-800',
-                                        'Broken' => 'bg-red-100 text-red-800',
-                                        'Retired' => 'bg-gray-100 text-gray-800',
-                                        'Taken' => 'bg-orange-100 text-orange-800'
-                                    ];
-                                @endphp
-                                <span class="px-2.5 py-1 text-xs font-semibold rounded-full {{ $statusColors[$asset->status] ?? 'bg-gray-100 text-gray-800' }} inline-flex items-center">
-                                    <span class="w-1.5 h-1.5 rounded-full mr-1.5 {{ str_replace('bg-', 'bg-', str_replace('-100', '-600', $statusColors[$asset->status] ?? 'bg-gray-600')) }}"></span>
-                                    {{ $asset->status }}
-                                </span>
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap">
-                                @if($asset->assignedEmployee)
-                                <div class="flex items-center">
-                                    <div class="ml-2">
-                                        <div class="text-sm font-medium text-gray-900">{{ $asset->assignedEmployee->name }}</div>
-                                    </div>
-                                </div>
-                                @else
-                                <span class="text-sm text-gray-500 italic">Unassigned</span>
-                                @endif
-                            </td>
-                            <td class="px-4 py-4 whitespace-nowrap hidden sm:table-cell">
-                                <span class="text-sm text-gray-600">{{ $asset->assignedEmployee->department ?? 'N/A' }}</span>
-                                </td>
-                        </tr>
-                        @empty
-                        <tr>
-                            <td colspan="6" class="px-6 py-12 text-center">
-                                <i data-lucide="inbox" class="w-12 h-12 text-gray-300 mx-auto mb-3"></i>
-                                <p class="text-gray-500 text-lg">No assets found</p>
-                                @if(request()->hasAny(['status', 'search']))
-                                <a href="{{ route('dashboard.assets.type.detail', $assetType->id) }}" class="text-saipem-primary hover:text-saipem-accent text-sm mt-2 inline-block">
-                                    Clear filters to see all assets
-                                </a>
-                                @endif
-                            </td>
-                        </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Pagination -->
-            @if($assets->hasPages())
-            <div class="px-4 sm:px-6 py-4 border-t border-gray-200">
-                {{ $assets->onEachSide(1)->links() }}
+            <!-- Recent Deliveries -->
+            @if(isset($recentDeliveries) && $recentDeliveries->count() > 0)
+            <div class="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                    <i data-lucide="truck" class="w-5 h-5 mr-2 text-saipem-primary"></i>
+                    Recent Deliveries
+                </h3>
+                <div class="space-y-3">
+                    @foreach($recentDeliveries as $asset)
+                    <div class="flex items-center justify-between text-sm">
+                        <div>
+                            <span class="font-medium text-gray-900">{{ $asset->po_ref ?? 'N/A' }}</span>
+                            <span class="text-gray-500 ml-2">{{ $asset->item_name ?? 'Item' }}</span>
+                        </div>
+                        <span class="text-xs text-gray-500">
+                            {{ $asset->delivery_date ? \Carbon\Carbon::parse($asset->delivery_date)->format('M d') : 'N/A' }}
+                        </span>
+                    </div>
+                    @endforeach
+                </div>
             </div>
             @endif
         </div>

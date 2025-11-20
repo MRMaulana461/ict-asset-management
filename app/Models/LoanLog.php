@@ -14,13 +14,14 @@ class LoanLog extends Model
     protected $fillable = [
         'borrower_id',
         'asset_id',
+        'asset_type_id',
         'loan_date',
         'loan_time',
         'quantity',
         'duration_days',
         'return_date',
         'status',
-        'signature'
+        'reason'
     ];
 
     protected $casts = [
@@ -39,6 +40,12 @@ class LoanLog extends Model
     public function asset()
     {
         return $this->belongsTo(Asset::class);
+    }
+
+    // Relationship: LoanLog belongs to AssetType (untuk data historis)
+    public function assetType()
+    {
+        return $this->belongsTo(AssetType::class, 'asset_type_id');
     }
 
     // Scopes

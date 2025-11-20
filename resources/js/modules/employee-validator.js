@@ -34,8 +34,18 @@ export class EmployeeValidator {
         try {
             const response = await fetch(`${this.apiEndpoint}/${encodeURIComponent(employeeId)}`);
             
+            if (response.status === 404) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Employee not found in the system');
+            }
+
+            if (response.status === 403) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Employee is inactive');
+            }
+
             if (!response.ok) {
-                throw new Error('Network response was not ok');
+                throw new Error(`Server error (${response.status}). Please try again.`);
             }
             
             const data = await response.json();

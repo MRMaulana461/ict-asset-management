@@ -225,7 +225,6 @@
                         <tr>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">Department</th>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Item Type</th>
                             <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                         </tr>
@@ -244,9 +243,6 @@
                                             <div class="text-xs text-gray-500">{{ $withdrawal->employee->employee_id }}</div>
                                         </div>
                                     </div>
-                                </td>
-                                <td class="px-4 py-4 whitespace-nowrap hidden lg:table-cell">
-                                    <span class="text-sm text-gray-600">{{ $withdrawal->employee->department ?? '-' }}</span>
                                 </td>
                                 <td class="px-4 py-4 whitespace-nowrap hidden sm:table-cell">
                                     <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">

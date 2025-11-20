@@ -58,11 +58,11 @@
 
                 <!-- Employee ID -->
                 <div>
-                    <label for="employee_id" class="block text-sm font-medium text-gray-700">Employee ID *</label>
-                    <input type="text" name="employee_id" id="employee_id" value="{{ old('employee_id') }}"
+                    <label for="ghrs_id" class="block text-sm font-medium text-gray-700">Employee ID *</label>
+                    <input type="text" name="ghrs_id" id="ghrs_id" value="{{ old('ghrs_id') }}"
                            placeholder="e.g., KAR175458" required
-                           class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-saipem-accent focus:border-saipem-accent sm:text-sm @error('employee_id') border-red-500 @enderror"/>
-                    @error('employee_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+                           class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-saipem-accent focus:border-saipem-accent sm:text-sm @error('ghrs_id') border-red-500 @enderror"/>
+                    @error('ghrs_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                     <p id="employeeError" class="mt-1 text-sm text-red-600 hidden"></p>
                 </div>
 

@@ -8,6 +8,7 @@ use App\Models\LoanLog;
 use App\Models\Employee;
 use App\Models\Withdrawal;
 use App\Services\DashboardService;
+use App\Services\ExcelExportService;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -15,10 +16,12 @@ use Illuminate\Http\Request;
 class DashboardController extends Controller
 {
     protected $dashboardService;
+    protected $excelExportService;
 
-    public function __construct(DashboardService $dashboardService)
+    public function __construct(DashboardService $dashboardService, ExcelExportService $excelExportService)
     {
         $this->dashboardService = $dashboardService;
+        $this->excelExportService = $excelExportService;
     }
 
     public function index(Request $request)
@@ -74,20 +77,21 @@ class DashboardController extends Controller
             ->get();
         
         // ===== MOST BORROWED ITEMS =====
-        $mostBorrowedItems = LoanLog::select('asset_id', DB::raw('count(*) as borrow_count'))
-            ->with('asset.assetType')
-            ->groupBy('asset_id')
+        $mostBorrowedItems = LoanLog::select('asset_type_id', DB::raw('count(*) as borrow_count'))
+            ->with('assetType')
+            ->whereNotNull('asset_type_id')
+            ->groupBy('asset_type_id')
             ->orderByDesc('borrow_count')
             ->take(5)
             ->get()
             ->map(function ($loan) {
                 return [
-                    'asset_type' => $loan->asset->assetType->name ?? 'Unknown',
-                    'asset_tag' => $loan->asset->asset_tag ?? 'N/A',
+                    'asset_type' => $loan->assetType->name ?? 'Unknown',
+                    'asset_type_id' => $loan->asset_type_id,
                     'count' => $loan->borrow_count
                 ];
             });
-        
+            
         // ===== MOST DAMAGED ITEMS =====
         $mostDamagedItems = Withdrawal::select('asset_type_id', DB::raw('SUM(quantity) as damage_count'))
             ->with('assetType')
@@ -467,6 +471,7 @@ class DashboardController extends Controller
     {
         $assetType = AssetType::findOrFail($id);
         
+        // Status Breakdown
         $statusBreakdown = [
             'in_stock' => Asset::where('asset_type_id', $id)->where('status', 'In Stock')->count(),
             'in_use' => Asset::where('asset_type_id', $id)->where('status', 'In Use')->count(),
@@ -477,25 +482,67 @@ class DashboardController extends Controller
         
         $totalAssets = array_sum($statusBreakdown);
         
+        // Base Query
         $query = Asset::where('asset_type_id', $id)->with(['assignedEmployee']);
         
+        // Filter by Status
         if ($request->filled('status') && $request->status != 'all') {
             $query->where('status', $request->status);
         }
         
+        // Filter by Brand
+        if ($request->filled('brand')) {
+            $query->where('brand', $request->brand);
+        }
+        
+        // Search Filter - UPDATED untuk kolom yang relevan
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
-                $q->where('asset_tag', 'like', "%{$search}%")
+                $q->where('po_ref', 'like', "%{$search}%")
+                ->orWhere('pr_ref', 'like', "%{$search}%")
+                ->orWhere('item_name', 'like', "%{$search}%")
+                ->orWhere('brand', 'like', "%{$search}%")
                 ->orWhere('serial_number', 'like', "%{$search}%")
+                ->orWhere('service_tag', 'like', "%{$search}%")
+                ->orWhere('username', 'like', "%{$search}%")
+                ->orWhere('device_name', 'like', "%{$search}%")
                 ->orWhereHas('assignedEmployee', function($empQuery) use ($search) {
-                    $empQuery->where('name', 'like', "%{$search}%");
+                    $empQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('employee_id', 'like', "%{$search}%");
                 });
             });
         }
         
-        $assets = $query->latest()->paginate(15);
+        // Get Paginated Assets
+        $assets = $query->latest('delivery_date')->latest('created_at')->paginate(15);
         
+        // Get Available Brands for Filter Dropdown
+        $availableBrands = Asset::where('asset_type_id', $id)
+            ->whereNotNull('brand')
+            ->where('brand', '!=', '')
+            ->distinct()
+            ->orderBy('brand')
+            ->pluck('brand');
+        
+        // Get Top Brands Statistics
+        $topBrands = Asset::where('asset_type_id', $id)
+            ->whereNotNull('brand')
+            ->where('brand', '!=', '')
+            ->select('brand', DB::raw('count(*) as total'))
+            ->groupBy('brand')
+            ->orderByDesc('total')
+            ->take(5)
+            ->get();
+        
+        // Get Recent Deliveries
+        $recentDeliveries = Asset::where('asset_type_id', $id)
+            ->whereNotNull('delivery_date')
+            ->orderBy('delivery_date', 'desc')
+            ->take(5)
+            ->get();
+        
+        // Chart Data
         $chartData = [
             'labels' => ['In Stock', 'In Use', 'Broken', 'Retired', 'Taken'],
             'data' => [
@@ -513,13 +560,13 @@ class DashboardController extends Controller
             'statusBreakdown',
             'totalAssets',
             'assets',
-            'chartData'
+            'chartData',
+            'availableBrands',
+            'topBrands',
+            'recentDeliveries'
         ));
     }
-
-    /**
-     * Most Borrowed Detail - MOVED TO SERVICE
-     */
+    
     public function mostBorrowedDetail(Request $request)
     {
         $data = $this->dashboardService->getMostBorrowedData($request);
@@ -544,8 +591,28 @@ class DashboardController extends Controller
         return view('dashboard.activities.recent-detail', $data);
     }
 
-    public function exportCombinedReport()
-    {
-        return redirect()->route('dashboard')->with('info', 'Export feature will be implemented next');
-    }
+    // public function exportICTDashboard()
+    // {
+    //     try {
+    //         $filename = $this->excelExportService->generateICTDashboardReport();
+
+    //         return response()->download(
+    //             storage_path('app/public/reports/' . $filename),
+    //             $filename,
+    //             [
+    //                 'Content-Type' => 'application/vnd.openxmlformats-officedocumentspreadsheetml.sheet',
+    //             ]
+    //         )->deleteFileAfterSend(true);
+
+    //     } catch (\Exception $e) {
+    //         return redirect()->back()->with('error', 'Failed to generate report: ' . $e->getMessage());
+    //     }
+    // }
+
+    // public function itAnalytics(Request $request)
+    // {
+    //     // Get all analytics data from service
+    //     $analytics = $this->dashboardService->getITDashboardAnalytics($request);
+    //     return view('dashboard.it-analytics', compact('analytics'));
+    // }
 }

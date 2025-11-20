@@ -22,11 +22,23 @@ class AssetController extends Controller
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
-                $q->where('asset_tag', 'like', "%{$search}%")
+                $q->where('po_ref', 'like', "%{$search}%")
+                ->orWhere('pr_ref', 'like', "%{$search}%")
+                ->orWhere('item_name', 'like', "%{$search}%")
+                ->orWhere('brand', 'like', "%{$search}%")
                 ->orWhere('serial_number', 'like', "%{$search}%")
+                ->orWhere('service_tag', 'like', "%{$search}%")
+                ->orWhere('username', 'like', "%{$search}%")
+                ->orWhere('device_name', 'like', "%{$search}%")
+                ->orWhere('location', 'like', "%{$search}%")
+                ->orWhere('asset_tag', 'like', "%{$search}%")
                 ->orWhereHas('assignedEmployee', function($empQuery) use ($search) {
                     $empQuery->where('name', 'like', "%{$search}%")
-                            ->orWhere('employee_id', 'like', "%{$search}%");
+                            ->orWhere('ghrs_id', 'like', "%{$search}%")
+                            ->orWhere('user_id', 'like', "%{$search}%")
+                            ->orWhere('badge_id', 'like', "%{$search}%")
+                            ->orWhere('employee_id', 'like', "%{$search}%")
+                            ->orWhere('department', 'like', "%{$search}%");
                 });
             });
         }
@@ -40,9 +52,11 @@ class AssetController extends Controller
         }
 
         // Get paginated results
-        $assets = $query->orderBy('asset_tag')->paginate(20);
+        $assets = $query->latest('delivery_date')
+                        ->latest('created_at')
+                        ->paginate(10);
 
-        // ===== STATISTICS BASED ON FILTERED QUERY =====
+        // Statistics based on filtered query
         $statsQuery = clone $query;
         
         $stats = [
@@ -62,9 +76,56 @@ class AssetController extends Controller
     public function create()
     {
         $assetTypes = AssetType::all();
-        $employees = Employee::active()->orderBy('name')->get();
+        // Tidak perlu load employees lagi karena pakai API
         
-        return view('assets.create', compact('assetTypes', 'employees'));
+        return view('assets.create', compact('assetTypes'));
+    }
+
+    /**
+     * API: Get employee by employee_id (mendukung ghrs_id, user_id, dan badge_id)
+     * Route: GET /api/employees/by-employee-id/{employee_id}
+     */
+    public function getEmployeeByEmployeeId($employeeId)
+    {
+        try {
+            // Cari employee berdasarkan ghrs_id, user_id, atau badge_id
+            $employee = Employee::where('is_active', true)
+                ->where(function($query) use ($employeeId) {
+                    $query->where('ghrs_id', $employeeId)
+                          ->orWhere('user_id', $employeeId)
+                          ->orWhere('badge_id', $employeeId);
+                })
+                ->first();
+
+            if ($employee) {
+                return response()->json([
+                    'success' => true,
+                    'employee' => [
+                        'id' => $employee->id,
+                        'ghrs_id' => $employee->ghrs_id,
+                        'user_id' => $employee->user_id ?? '-',
+                        'badge_id' => $employee->badge_id ?? '-',
+                        'name' => $employee->name,
+                        'department' => $employee->department ?? '-',
+                        'email' => $employee->email ?? '-',
+                        'status' => $employee->status ?? 'active'
+                    ]
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Employee not found or inactive'
+            ], 404);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error fetching employee: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching employee data'
+            ], 500);
+        }
     }
 
     public function store(Request $request)
@@ -109,7 +170,7 @@ class AssetController extends Controller
                 if ($validated['assigned_to']) {
                     AssetHistory::create([
                         'asset_id' => $asset->id,
-                        'employee_id' => $validated['assigned_to'],
+                        'ghrs_id' => $validated['assigned_to'],
                         'assignment_date' => $validated['assignment_date'] ?? now(),
                         'notes' => 'Initial assignment (Peripheral - ' . $i . ' of ' . $quantity . ')'
                     ]);
@@ -138,7 +199,7 @@ class AssetController extends Controller
             if ($validated['assigned_to']) {
                 AssetHistory::create([
                     'asset_id' => $asset->id,
-                    'employee_id' => $validated['assigned_to'],
+                    'ghrs_id' => $validated['assigned_to'],
                     'assignment_date' => $validated['assignment_date'] ?? now(),
                     'notes' => 'Initial assignment'
                 ]);
@@ -159,9 +220,9 @@ class AssetController extends Controller
     public function edit(Asset $asset)
     {
         $assetTypes = AssetType::all();
-        $employees = Employee::active()->orderBy('name')->get();
+        // Tidak perlu load employees karena pakai API auto-fill
         
-        return view('assets.edit', compact('asset', 'assetTypes', 'employees'));
+        return view('assets.edit', compact('asset', 'assetTypes'));
     }
 
     public function update(Request $request, Asset $asset)
@@ -170,16 +231,16 @@ class AssetController extends Controller
             'asset_tag' => 'required|max:100|unique:assets,asset_tag,' . $asset->id,
             'serial_number' => 'nullable|max:100',
             'asset_type_id' => 'required|exists:asset_types,id',
-            'employee_id' => 'nullable|exists:employees,id',
+            'ghrs_id' => 'nullable|exists:employees,id',
             'status' => 'required|in:In Stock,In Use,Broken,Retired,Taken',
             'notes' => 'nullable'
         ]);
 
         // Tangani perubahan employee (owner)
         $oldEmployeeId = $asset->assigned_to;
-        $newEmployeeId = $validated['employee_id'] ?? null;
+        $newEmployeeId = $validated['ghrs_id'] ?? null;
 
-        // Update kolom assigned_to dengan nilai dari employee_id
+        // Update kolom assigned_to dengan nilai dari ghrs_id
         $asset->update([
             'asset_tag' => $validated['asset_tag'],
             'serial_number' => $validated['serial_number'],
@@ -195,7 +256,7 @@ class AssetController extends Controller
                 // Assignment baru
                 AssetHistory::create([
                     'asset_id' => $asset->id,
-                    'employee_id' => $newEmployeeId,
+                    'ghrs_id' => $newEmployeeId,
                     'assignment_date' => now(),
                     'notes' => 'Asset reassigned'
                 ]);
@@ -203,7 +264,7 @@ class AssetController extends Controller
                 // Return asset (tidak ada owner)
                 if ($oldEmployeeId) {
                     $lastHistory = AssetHistory::where('asset_id', $asset->id)
-                        ->where('employee_id', $oldEmployeeId)
+                        ->where('ghrs_id', $oldEmployeeId)
                         ->whereNull('return_date')
                         ->first();
                     
@@ -236,6 +297,30 @@ class AssetController extends Controller
             'end_date' => $request->end_date,
         ];
 
-        return Excel::download(new AssetsExport($filters), 'assets_' . date('Y-m-d') . '.xlsx');
+        // Generate dynamic filename berdasarkan filter
+        $filename = 'Assets';
+        
+        // Jika ada filter asset_type_id (bukan "All")
+        if (!empty($request->asset_type_id)) {
+            $assetType = \App\Models\AssetType::find($request->asset_type_id);
+            if ($assetType) {
+                // Sanitize nama asset type untuk filename
+                $typeName = str_replace(['/', '\\', '?', '*', '[', ']', ':', ' '], '_', $assetType->name);
+                $filename = 'Assets_' . $typeName;
+            }
+        } else {
+            // Jika "All" - akan ada multiple sheets
+            $filename = 'Assets_All_Types';
+        }
+        
+        // Tambahkan status filter jika ada
+        if (!empty($request->status)) {
+            $filename .= '_' . str_replace(' ', '_', $request->status);
+        }
+        
+        // Tambahkan tanggal export
+        $filename .= '_' . date('Y-m-d') . '.xlsx';
+
+        return Excel::download(new AssetsExport($filters), $filename);
     }
 }
